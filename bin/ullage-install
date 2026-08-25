@@ -6,7 +6,9 @@ SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 BRIDGE_HOME=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 BRIDGE="$SCRIPT_DIR/ullage-bridge"
 APPINFO_TOOL="$SCRIPT_DIR/ullage-appinfo.py"
+PATH_TOOL="$SCRIPT_DIR/ullage-path.py"
 HOME_VALUE=${HOME:-/tmp}
+STATE_HOME=${ULLAGE_STATE_DIR:-$HOME_VALUE/.ullage}
 
 die() {
     printf 'ullage-install: %s\n' "$*" >&2
@@ -23,7 +25,9 @@ Usage:
   ullage-install --appid ID --target PATH [options]
 
 Options:
-  --game-dir PATH             Steam install root/working directory (default: target directory)
+  --game-dir PATH             working directory (default: target directory)
+  --install-dir PATH          Steam install root for the relative launch entry (default: game-dir)
+  --state-dir PATH            generated state root (default: ~/.ullage)
   --prefix PATH               Wine prefix
   --arch auto|win32|win64     PE architecture (default: auto)
   --steam-root PATH           native Steam library root
@@ -39,7 +43,7 @@ Options:
   --cloud-sync-command CMD    optional pre/post launch Cloud adapter command
   --cloud-cdp                  use native Steam CEF session for Cloud reads
   --cloud-steam3-account-id ID Steam3 account ID for the Cloud adapter
-  --cloud-wine-user NAME       Wine user directory for the Cloud adapter
+  --cloud-wine-user NAME|auto  Wine user directory for the Cloud adapter (default: auto)
   --cloud-steamid64 ID         64-bit SteamID for Cloud path templates
   --force                     replace an existing external mapping
   --help
@@ -52,6 +56,7 @@ EOF
 APP_ID=
 TARGET=
 GAME_DIR=
+INSTALL_DIR=
 PREFIX=
 ARCH=auto
 STEAM_ROOT="${STEAM_ROOT:-$HOME_VALUE/Library/Application Support/Steam}"
@@ -67,7 +72,7 @@ CLOUD_SYNC_COMMAND=${CLOUD_SYNC_COMMAND:-}
 CLOUD_CDP=${CLOUD_CDP:-0}
 CLOUD_STEAM3_ACCOUNT_ID=${CLOUD_STEAM3_ACCOUNT_ID:-}
 CLOUD_STEAMID64=${CLOUD_STEAMID64:-}
-CLOUD_WINE_USER=${CLOUD_WINE_USER:-${USER:-}}
+CLOUD_WINE_USER=${CLOUD_WINE_USER:-auto}
 FORCE=0
 
 while [ "$#" -gt 0 ]; do
@@ -75,6 +80,8 @@ while [ "$#" -gt 0 ]; do
         --appid) [ "$#" -ge 2 ] || die "--appid requires a value"; APP_ID=$2; shift 2 ;;
         --target) [ "$#" -ge 2 ] || die "--target requires a path"; TARGET=$2; shift 2 ;;
         --game-dir) [ "$#" -ge 2 ] || die "--game-dir requires a path"; GAME_DIR=$2; shift 2 ;;
+        --install-dir) [ "$#" -ge 2 ] || die "--install-dir requires a path"; INSTALL_DIR=$2; shift 2 ;;
+        --state-dir) [ "$#" -ge 2 ] || die "--state-dir requires a path"; STATE_HOME=$2; shift 2 ;;
         --prefix) [ "$#" -ge 2 ] || die "--prefix requires a path"; PREFIX=$2; shift 2 ;;
         --arch) [ "$#" -ge 2 ] || die "--arch requires a value"; ARCH=$2; shift 2 ;;
         --steam-root) [ "$#" -ge 2 ] || die "--steam-root requires a path"; STEAM_ROOT=$2; shift 2 ;;
@@ -105,6 +112,7 @@ case "$APP_ID" in *[!0-9]*|'') die "AppID must be numeric: $APP_ID" ;; esac
 [ -x "$BRIDGE" ] || die "bridge is missing or not executable: $BRIDGE"
 [ -x "$SCRIPT_DIR/ullage-fd-exec" ] || die "fd helper is missing or not executable: $SCRIPT_DIR/ullage-fd-exec"
 [ -x "$APPINFO_TOOL" ] || die "appinfo editor is missing or not executable: $APPINFO_TOOL"
+[ -r "$PATH_TOOL" ] || die "path helper is missing: $PATH_TOOL"
 PYTHON3_VALUE=${PYTHON3:-python3}
 PYTHON3_BIN=$(command -v "$PYTHON3_VALUE" 2>/dev/null || true)
 [ -n "$PYTHON3_BIN" ] || die "python3 is required (set PYTHON3 to override)"
@@ -131,6 +139,16 @@ else
     esac
 fi
 [ -d "$GAME_DIR" ] || die "game directory does not exist: $GAME_DIR"
+
+if [ -z "$INSTALL_DIR" ]; then
+    INSTALL_DIR=$GAME_DIR
+else
+    case "$INSTALL_DIR" in
+        /*) ;;
+        *) INSTALL_DIR=$(CDPATH= cd "$INSTALL_DIR" && pwd) ;;
+    esac
+fi
+[ -d "$INSTALL_DIR" ] || die "install directory does not exist: $INSTALL_DIR"
 
 FILE_INFO=$(/usr/bin/file -b "$TARGET")
 case "$FILE_INFO" in
@@ -165,7 +183,7 @@ else
 fi
 
 if [ -z "$PREFIX" ]; then
-    PREFIX="${WINEPREFIX:-$BRIDGE_HOME/compatdata/$APP_ID/pfx}"
+    PREFIX="${WINEPREFIX:-$STATE_HOME/compatdata/$APP_ID/pfx}"
 fi
 [ -d "$PREFIX" ] || die "Wine prefix does not exist: $PREFIX"
 [ -f "$PREFIX/system.reg" ] || die "Wine prefix is not initialized: $PREFIX"
@@ -177,23 +195,18 @@ if [ "$LEGACY_STEAM" = 1 ]; then
     done
 fi
 if [ -z "$LOG_FILE" ]; then
-    LOG_FILE="$BRIDGE_HOME/logs/$APP_ID.log"
+    LOG_FILE="$STATE_HOME/logs/$APP_ID.log"
 fi
 
 APPINFO="$STEAM_ROOT/appcache/appinfo.vdf"
 [ -f "$APPINFO" ] || die "Steam appinfo cache is missing: $APPINFO"
-CONFIG_DIR="$BRIDGE_HOME/config/games"
+CONFIG_DIR="$STATE_HOME/config/games"
 CONFIG_FILE="$CONFIG_DIR/$APP_ID.conf"
 STATE_FILE="$CONFIG_DIR/$APP_ID.launch.json"
-LAUNCHER_DIR="$BRIDGE_HOME/launchers"
+LAUNCHER_DIR="$STATE_HOME/launchers"
 LAUNCHER="$LAUNCHER_DIR/$APP_ID.sh"
 TARGET_NAME=$(basename "$TARGET")
-LAUNCH_REL=$("$PYTHON3_BIN" - "$GAME_DIR" "$LAUNCHER" <<'PY'
-import os
-import sys
-print(os.path.relpath(sys.argv[2], sys.argv[1]))
-PY
-)
+LAUNCH_REL=$("$PYTHON3_BIN" "$PATH_TOOL" relative "$INSTALL_DIR" "$LAUNCHER")
 
 for existing_file in "$CONFIG_FILE" "$STATE_FILE" "$LAUNCHER"; do
     if [ -e "$existing_file" ] && [ "$FORCE" -ne 1 ]; then
@@ -201,10 +214,10 @@ for existing_file in "$CONFIG_FILE" "$STATE_FILE" "$LAUNCHER"; do
     fi
 done
 
-mkdir -p "$CONFIG_DIR" "$LAUNCHER_DIR" "$BRIDGE_HOME/backups/appinfo"
+mkdir -p "$CONFIG_DIR" "$LAUNCHER_DIR" "$STATE_HOME/backups/appinfo"
 umask 077
 STAMP=$(/bin/date +%Y%m%d-%H%M%S).$$
-APPINFO_BACKUP="$BRIDGE_HOME/backups/appinfo/$APP_ID-$STAMP.vdf"
+APPINFO_BACKUP="$STATE_HOME/backups/appinfo/$APP_ID-$STAMP.vdf"
 APPINFO_TMP="$APPINFO.tmp.$$"
 CONFIG_TMP="$CONFIG_FILE.tmp.$$"
 LAUNCHER_TMP="$LAUNCHER.tmp.$$"
@@ -247,6 +260,7 @@ fi
 
 {
     printf 'APP_ID=%s\n' "$(shell_quote "$APP_ID")"
+    printf 'STATE_HOME=%s\n' "$(shell_quote "$STATE_HOME")"
     printf 'GAME_EXE=%s\n' "$(shell_quote "$TARGET")"
     printf 'GAME_DIR=%s\n' "$(shell_quote "$GAME_DIR")"
     printf 'PREFIX=%s\n' "$(shell_quote "$PREFIX")"

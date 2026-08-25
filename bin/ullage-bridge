@@ -6,6 +6,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 BRIDGE_HOME=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 HOME_VALUE=${HOME:-/tmp}
+STATE_HOME=${ULLAGE_STATE_DIR:-$HOME_VALUE/.ullage}
 
 die() {
     printf 'ullage-bridge: %s\n' "$*" >&2
@@ -23,6 +24,7 @@ Required options (normally supplied by FILE):
 
 Runtime options:
   --game-dir PATH             working directory (defaults to executable dir)
+  --state-dir PATH            generated state root (default: ~/.ullage)
   --prefix PATH               Wine prefix
   --arch auto|win32|win64     PE architecture (default: auto)
   --steam-root PATH           native Steam library root
@@ -68,7 +70,7 @@ CLOUD_SYNC_COMMAND=${CLOUD_SYNC_COMMAND:-}
 CLOUD_CDP=${CLOUD_CDP:-0}
 CLOUD_STEAM3_ACCOUNT_ID=${CLOUD_STEAM3_ACCOUNT_ID:-}
 CLOUD_STEAMID64=${CLOUD_STEAMID64:-}
-CLOUD_WINE_USER=${CLOUD_WINE_USER:-${USER:-}}
+CLOUD_WINE_USER=${CLOUD_WINE_USER:-auto}
 
 load_config() {
     config_path=$1
@@ -85,6 +87,11 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || die "--config requires a path"
             CONFIG=$2
             load_config "$CONFIG"
+            shift 2
+            ;;
+        --state-dir)
+            [ "$#" -ge 2 ] || die "--state-dir requires a path"
+            STATE_HOME=$2
             shift 2
             ;;
         --appid)
@@ -241,10 +248,10 @@ fi
 [ -d "$GAME_DIR" ] || die "game directory does not exist: $GAME_DIR"
 
 if [ -z "$PREFIX" ]; then
-    PREFIX="${WINEPREFIX:-$BRIDGE_HOME/compatdata/$APP_ID/pfx}"
+    PREFIX="${WINEPREFIX:-$STATE_HOME/compatdata/$APP_ID/pfx}"
 fi
 if [ -z "$LOG_FILE" ]; then
-    LOG_FILE="$BRIDGE_HOME/logs/$APP_ID.log"
+    LOG_FILE="$STATE_HOME/logs/$APP_ID.log"
 fi
 
 FILE_CMD=/usr/bin/file

@@ -10,6 +10,33 @@ SPEC = importlib.util.spec_from_file_location("ullage_cloud_sync", ROOT / "bin/u
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
+assert MODULE.steamid64_for_account("392297941") == "76561198352563669"
+
+pattern = {"root": "WinAppDataLocalLow", "path": "{64BitSteamID}/save1"}
+assert MODULE.steam_filename(pattern, "392297941", "76561198352563669") == (
+    "%WinAppDataLocalLow%76561198352563669/save1"
+)
+destination = MODULE.safe_destination(
+    Path("/tmp/ullage-test-prefix"),
+    "kurt",
+    "%WinAppDataLocalLow%76561198352563669/save1/save.dat",
+    [pattern],
+    "392297941",
+    "76561198352563669",
+)
+assert destination == Path(
+    "/tmp/ullage-test-prefix/drive_c/users/kurt/AppData/LocalLow"
+    "/76561198352563669/save1/save.dat"
+).resolve()
+
+with tempfile.TemporaryDirectory() as temporary:
+    prefix = Path(temporary)
+    (prefix / "user.reg").write_text(
+        '"USERPROFILE"="C:\\\\users\\\\steamuser"\n', encoding="utf-8"
+    )
+    assert MODULE.resolve_wine_user(prefix, "auto") == "steamuser"
+    assert MODULE.resolve_wine_user(prefix, "explicit") == "explicit"
+
 with tempfile.TemporaryDirectory() as temporary:
     base = Path(temporary)
     source = base / "source.bin"

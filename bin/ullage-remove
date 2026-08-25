@@ -6,6 +6,7 @@ SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 BRIDGE_HOME=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 APPINFO_TOOL="$SCRIPT_DIR/ullage-appinfo.py"
 HOME_VALUE=${HOME:-/tmp}
+STATE_HOME=${ULLAGE_STATE_DIR:-$HOME_VALUE/.ullage}
 
 die() {
     printf 'ullage-remove: %s\n' "$*" >&2
@@ -13,7 +14,7 @@ die() {
 }
 
 usage() {
-    printf '%s\n' 'Usage: ullage-remove --appid ID [--steam-root PATH]'
+    printf '%s\n' 'Usage: ullage-remove --appid ID [--steam-root PATH] [--state-dir PATH]'
     printf '%s\n' 'Steam must be fully quit while appcache/appinfo.vdf is restored.'
 }
 
@@ -23,6 +24,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --appid) [ "$#" -ge 2 ] || die "--appid requires a value"; APP_ID=$2; shift 2 ;;
         --steam-root) [ "$#" -ge 2 ] || die "--steam-root requires a path"; STEAM_ROOT=$2; shift 2 ;;
+        --state-dir) [ "$#" -ge 2 ] || die "--state-dir requires a path"; STATE_HOME=$2; shift 2 ;;
         --help|-h) usage; exit 0 ;;
         *) die "unknown option: $1" ;;
     esac
@@ -36,16 +38,16 @@ PYTHON3_BIN=$(command -v "$PYTHON3_VALUE" 2>/dev/null || true)
 STEAM_PIDS=$(/usr/bin/pgrep -x steam_osx 2>/dev/null || true)
 [ -z "$STEAM_PIDS" ] || die "quit native Steam before editing appcache (PIDs: $STEAM_PIDS)"
 
-CONFIG_DIR="$BRIDGE_HOME/config/games"
+CONFIG_DIR="$STATE_HOME/config/games"
 STATE_FILE="$CONFIG_DIR/$APP_ID.launch.json"
-LAUNCHER="$BRIDGE_HOME/launchers/$APP_ID.sh"
+LAUNCHER="$STATE_HOME/launchers/$APP_ID.sh"
 CONFIG_FILE="$CONFIG_DIR/$APP_ID.conf"
 APPINFO="$STEAM_ROOT/appcache/appinfo.vdf"
 [ -f "$STATE_FILE" ] || die "launch mapping state is missing: $STATE_FILE"
 [ -f "$APPINFO" ] || die "Steam appinfo cache is missing: $APPINFO"
 
 STAMP=$(/bin/date +%Y%m%d-%H%M%S).$$
-BACKUP_DIR="$BRIDGE_HOME/backups/appinfo"
+BACKUP_DIR="$STATE_HOME/backups/appinfo"
 mkdir -p "$BACKUP_DIR"
 APPINFO_BACKUP="$BACKUP_DIR/$APP_ID-remove-$STAMP.vdf"
 APPINFO_TMP="$APPINFO.tmp.$$"

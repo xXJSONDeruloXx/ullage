@@ -1,7 +1,11 @@
 #!/usr/bin/env node
-// Read Steam Cloud metadata through native Steam's authenticated CEF session.
+// Read Steam Cloud metadata and file bytes through native Steam's authenticated CEF session.
 // Steam must be started with -cef-enable-debugging; no cookies or tokens are
 // extracted or persisted.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const appid = process.argv[2];
 const includeData = process.argv.includes("--include-data");
@@ -45,8 +49,68 @@ function command(method, params = {}) {
   });
 }
 
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function downloadName(item) {
+  return `%${item.folder}%${item.name}`.replace(/[\\/]/g, "_");
+}
+
+async function waitForDownload(directory, before, expectedName) {
+  const deadline = Date.now() + 60000;
+  let previousPath = "";
+  let previousSize = -1;
+  let stableReads = 0;
+  while (Date.now() < deadline) {
+    const newCandidates = fs.readdirSync(directory)
+      .filter((name) => !before.has(name) && !name.endsWith(".crdownload"));
+    const candidates = fs.existsSync(path.join(directory, expectedName))
+      ? [expectedName]
+      : newCandidates.length === 1 ? newCandidates : [];
+    if (candidates.length === 1) {
+      const candidate = path.join(directory, candidates[0]);
+      const stat = fs.statSync(candidate);
+      if (stat.isFile()) {
+        if (candidate === previousPath && stat.size === previousSize) {
+          stableReads += 1;
+        } else {
+          previousPath = candidate;
+          previousSize = stat.size;
+          stableReads = 0;
+        }
+        if (stableReads >= 2) return candidate;
+      }
+    }
+    await sleep(100);
+  }
+  throw new Error(`Steam Cloud download did not finish within 60 seconds: ${expectedName}`);
+}
+
+const cloudUrl = `https://store.steampowered.com/account/remotestorageapp/?appid=${appid}`;
+const fileRowsExpression = `(() => Array.from(document.querySelectorAll('.accountTable tr')).map((row) => {
+  const cells = row.querySelectorAll('td');
+  if (cells.length < 4) return null;
+  const link = row.querySelector('a[href*="ugc"], a[href*="filedownload"], a[href*="steamusercontent"]');
+  return { folder: cells[0].textContent.trim(), name: cells[1].textContent.trim(),
+    size: cells[2].textContent.trim(), timestamp: cells[3].textContent.trim(),
+    url: link ? link.href : '' };
+}).filter(Boolean))()`;
+
+async function waitForCloudTable() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const ready = await command("Runtime.evaluate", {
+      expression: "document.querySelectorAll('.accountTable tr').length > 1",
+      returnByValue: true,
+    });
+    if (ready === true) return;
+    await sleep(500);
+  }
+  throw new Error("Steam Cloud page did not expose its file table");
+}
+
 const created = await command("Target.createTarget", {
-  url: `https://store.steampowered.com/account/remotestorageapp/?appid=${appid}`,
+  url: cloudUrl,
 });
 socket.close();
 let childTarget;
@@ -64,42 +128,49 @@ await new Promise((resolve, reject) => {
   socket.onerror = () => reject(new Error("Steam CDP child connection failed"));
 });
 await command("Page.enable");
-for (let attempt = 0; attempt < 20; attempt += 1) {
-  const ready = await command("Runtime.evaluate", {
-    expression: "document.querySelectorAll('.accountTable tr').length > 1",
-    returnByValue: true,
-  });
-  if (ready === true) break;
-  await new Promise((resolve) => setTimeout(resolve, 500));
-}
+await waitForCloudTable();
 const files = await command("Runtime.evaluate", {
-  expression: `(() => Array.from(document.querySelectorAll('.accountTable tr')).map((row) => {
-    const cells = row.querySelectorAll('td');
-    if (cells.length < 4) return null;
-    const link = row.querySelector('a[href*="ugc"], a[href*="filedownload"], a[href*="steamusercontent"]');
-    return { folder: cells[0].textContent.trim(), name: cells[1].textContent.trim(),
-      size: cells[2].textContent.trim(), timestamp: cells[3].textContent.trim(),
-      url: link ? link.href : '' };
-  }).filter(Boolean))()`,
+  expression: fileRowsExpression,
   returnByValue: true,
   awaitPromise: true,
 });
-if (includeData && files.length) {
-  const urls = files.map((item) => item.url);
-  const data = await command("Runtime.evaluate", {
-    expression: `(async () => Promise.all(${JSON.stringify(urls)}.map(async (url) => {
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) throw new Error('Cloud download HTTP ' + response.status);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += 0x8000)
-        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      return btoa(binary);
-    })))()`,
-    returnByValue: true,
-    awaitPromise: true,
-  });
-  files.forEach((item, index) => { item.data = data[index]; });
+const downloadDirectory = includeData
+  ? fs.mkdtempSync(path.join(os.tmpdir(), "ullage-cloud-"))
+  : null;
+try {
+  if (includeData && files.length) {
+    await command("Page.setDownloadBehavior", {
+      behavior: "allow",
+      downloadPath: downloadDirectory,
+    });
+    for (const item of files) {
+      // filedownload links are short-lived; refresh the row immediately before
+      // navigation so a large Cloud set does not leave the last entries stale.
+      await command("Page.navigate", { url: cloudUrl });
+      await waitForCloudTable();
+      const folder = JSON.stringify(item.folder);
+      const name = JSON.stringify(item.name);
+      item.url = await command("Runtime.evaluate", {
+        expression: `(() => { for (const row of document.querySelectorAll('.accountTable tr')) {
+          const cells = row.querySelectorAll('td');
+          if (cells.length >= 4 && cells[0].textContent.trim() === ${folder} &&
+              cells[1].textContent.trim() === ${name})
+            return row.querySelector('a[href*="ugc"], a[href*="filedownload"], a[href*="steamusercontent"]')?.href || '';
+        } return ''; })()`,
+        returnByValue: true,
+      });
+      if (!item.url) throw new Error(`Steam Cloud file has no download URL: ${item.name}`);
+      const before = new Set(fs.readdirSync(downloadDirectory));
+      await command("Page.navigate", { url: item.url });
+      const downloaded = await waitForDownload(downloadDirectory, before, downloadName(item));
+      item.data = fs.readFileSync(downloaded).toString("base64");
+    }
+  }
+} finally {
+  // The child page is temporary. Close it so authenticated Cloud reads do not
+  // leave a Steam browser window covering the game launched underneath it.
+  await command("Page.close").catch(() => {});
+  socket.close();
+  if (downloadDirectory) fs.rmSync(downloadDirectory, { recursive: true, force: true });
 }
 process.stdout.write(`${JSON.stringify({ appid: Number(appid), files })}\n`);
-socket.close();

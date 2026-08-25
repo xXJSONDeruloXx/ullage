@@ -17,11 +17,13 @@ import base64
 import urllib.parse
 import urllib.request
 import hashlib
+import re
 from pathlib import Path
 
 import importlib.util
 
 ROOT = Path(__file__).resolve().parent
+STEAMID64_BASE = 76561197960265728
 SPEC = importlib.util.spec_from_file_location("ullage_appinfo", ROOT / "ullage-appinfo.py")
 APPINFO = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(APPINFO)
@@ -45,6 +47,45 @@ def steam_filename(pattern, steam3_id, steamid64):
     path = path.replace("{Steam3AccountID}", str(steam3_id))
     path = path.replace("{64BitSteamID}", str(steamid64))
     return f"%{root}%{path}".replace("\\", "/").rstrip("/")
+
+
+def steamid64_for_account(steam3_id):
+    return str(STEAMID64_BASE + int(steam3_id))
+
+
+def resolve_wine_user(prefix, requested):
+    """Resolve the Windows user directory used by this Wine prefix."""
+    requested = str(requested or "").strip()
+    if requested and requested.lower() != "auto":
+        return requested
+
+    prefix_path = Path(prefix).expanduser()
+    user_reg = prefix_path / "user.reg"
+    if user_reg.is_file():
+        match = re.search(
+            r'"USERPROFILE"="C:\\users\\([^"\\]+)"',
+            user_reg.read_text(encoding="utf-8", errors="ignore"),
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1)
+
+    users_dir = prefix_path / "drive_c" / "users"
+    candidates = sorted(
+        item.name for item in users_dir.iterdir()
+        if item.is_dir() and item.name.lower() not in {"public", "default", "default user", "all users"}
+    ) if users_dir.is_dir() else []
+    if "steamuser" in {item.lower() for item in candidates}:
+        return next(item for item in candidates if item.lower() == "steamuser")
+    if len(candidates) == 1:
+        return candidates[0]
+    return "steamuser"
+
+
+def expand_path(path, steam3_id, steamid64):
+    return str(path).replace("{Steam3AccountID}", str(steam3_id)).replace(
+        "{64BitSteamID}", str(steamid64)
+    )
 
 
 def request_json(url, params, token):
@@ -105,14 +146,26 @@ def safe_destination(prefix, user, filename, patterns, steam3_id, steamid64):
         cloud_prefix = steam_filename(pattern, steam3_id, steamid64)
         if normalized == cloud_prefix or normalized.startswith(cloud_prefix + "/"):
             relative = normalized[len(cloud_prefix):].lstrip("/")
-            return CLOUD_PATH.resolve(prefix, user, pattern["root"], pattern.get("path", "").replace("{Steam3AccountID}", str(steam3_id)) + "/" + relative)
+            return CLOUD_PATH.resolve(
+                prefix,
+                user,
+                pattern["root"],
+                expand_path(pattern.get("path", ""), steam3_id, steamid64)
+                + "/"
+                + relative,
+            )
     return None
 
 
 def local_files(prefix, user, patterns, steam3_id, steamid64):
     for pattern in patterns:
         root = pattern.get("root")
-        base = CLOUD_PATH.resolve(prefix, user, root, str(pattern.get("path", "")).replace("{Steam3AccountID}", str(steam3_id)))
+        base = CLOUD_PATH.resolve(
+            prefix,
+            user,
+            root,
+            expand_path(pattern.get("path", ""), steam3_id, steamid64),
+        )
         if not base.exists():
             continue
         for candidate in base.rglob("*"):
@@ -224,7 +277,7 @@ def main():
     parser.add_argument("--appid", required=True, type=int)
     parser.add_argument("--appinfo", required=True)
     parser.add_argument("--prefix", required=True)
-    parser.add_argument("--user", required=True)
+    parser.add_argument("--user", required=True, help="Wine user directory name, or auto")
     parser.add_argument("--steam3-account-id", required=True)
     parser.add_argument("--steamid64", help="64-bit SteamID for {64BitSteamID} paths (defaults to Steam3 ID)")
     parser.add_argument("--download", action="store_true", help="write matching cloud files into the prefix")
@@ -240,12 +293,14 @@ def main():
         return 2
 
     appinfo = APPINFO.AppInfo(args.appinfo)
-    steamid64 = args.steamid64 or args.steam3_account_id
+    steamid64 = args.steamid64 or steamid64_for_account(args.steam3_account_id)
+    wine_user = resolve_wine_user(args.prefix, args.user)
     patterns = cloud_patterns(appinfo, args.appid)
     files = enumerate_cdp_files(args.appid, include_data=args.download) if args.cdp else enumerate_files(args.appid, token)
     matched = 0
+    print(f"wine_user={wine_user}")
     for item in files:
-        destination = safe_destination(args.prefix, args.user, item.get("filename", ""), patterns, args.steam3_account_id, steamid64)
+        destination = safe_destination(args.prefix, wine_user, item.get("filename", ""), patterns, args.steam3_account_id, steamid64)
         if destination is None:
             continue
         matched += 1
@@ -261,7 +316,7 @@ def main():
             )
     print(f"matched={matched}")
     if args.upload:
-        upload_files(args.appid, token, args.prefix, args.user, patterns, args.steam3_account_id, steamid64, files)
+        upload_files(args.appid, token, args.prefix, wine_user, patterns, args.steam3_account_id, steamid64, files)
     return 0
 
 

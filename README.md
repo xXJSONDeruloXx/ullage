@@ -45,8 +45,10 @@ state when needed.
 
 The mapping is local and volatile: Steam updates may rewrite appinfo.vdf. Every
 install makes a private appinfo backup, and the remove command restores the
-recorded launch entry semantically. Keep the generated state under the repo
-directory out of version control.
+recorded launch entry semantically. Generated launchers, mapping state,
+backups, default prefixes, and logs live under `~/.ullage` by default (or the
+`ULLAGE_STATE_DIR`/`--state-dir` override); the repository remains code and
+runtime provenance.
 
 ## What is in the tree
 
@@ -60,12 +62,15 @@ directory out of version control.
   prefix; it never performs a global process-name kill.
 * bin/ullage-appinfo.py — dependency-free editor for the single binary VDF
   launch record used by native macOS Steam.
+* bin/ullage-path.py — tested path helper for Steam's install-root-relative
+  external launcher entry.
 * bin/ullage-cloud-path.py — deterministic mapping of Windows Steam Cloud
   roots into the selected Wine prefix; transport is intentionally separate.
 * bin/ullage-cloud-sync.py — read-only Steam Cloud enumeration and optional
   prefix download using `ULLAGE_STEAM_ACCESS_TOKEN`; uploads remain gated.
-* bin/ullage-cloud-cdp.mjs — optional native Steam CEF/CDP Cloud metadata
-  reader using the logged-in browser session without persisting credentials.
+* bin/ullage-cloud-cdp.mjs — optional native Steam CEF/CDP Cloud metadata and
+  download reader using the logged-in browser session without persisting
+  credentials.
 * bin/ullage-fd-exec — universal descriptor-boundary helper, built from
   src/ullage-fd-exec.c.
 * runtime/README.md — runtime and lsteamclient contract. The large third-party
@@ -108,6 +113,7 @@ STEAM_ROOT="$HOME/Library/Application Support/Steam"
 "$REPO/bin/ullage-install" \
   --appid APPID \
   --target "$STEAM_ROOT/steamapps/common/Title/Game.exe" \
+  --install-dir "$STEAM_ROOT/steamapps/common/Title" \
   --prefix "$HOME/Library/Application Support/ullage/prefixes/APPID" \
   --wine-root "/path/to/wine" \
   --gptk-root "/path/to/gptk" \
@@ -137,8 +143,14 @@ keeps credentials out of generated appinfo and lets one reusable hook invoke
 enabled until the title's conflict policy is understood.
 
 For a Steam client started with `-cef-enable-debugging`, add `--cloud-cdp` to
-use the native authenticated CEF session for pre-launch downloads. CDP mode is
-read/download-only; post-exit upload is skipped rather than falsely reported.
+use the native authenticated CEF session for pre-launch downloads. The reader
+refreshes each Cloud row immediately before downloading because its signed
+`filedownload` links are short-lived, and transfers through Steam's browser
+download path rather than a standalone unauthenticated URL request. CDP mode
+is read/download-only; post-exit upload is skipped rather than falsely
+reported. The default `--cloud-wine-user auto` reads the prefix's `user.reg`
+and maps files into the Windows user that the game actually runs as; pass an
+explicit name only for a deliberately nonstandard prefix.
 
 The Steam Cloud badge has an important boundary. Native Steam is the authority
 for the badge, and it only becomes `Up to date` when that client can resolve the
@@ -152,9 +164,9 @@ published macOS root override or a maintained native Steam Cloud resolver
 patch.
 
 For games whose Windows executable is nested below the install root (for
-example, `windows/Game.exe`), set `--game-dir` to the Steam install directory,
-not the nested executable directory. Steam resolves the patched launch entry
-relative to that install root.
+example, `windows/Game.exe`), set `--install-dir` to the Steam install
+directory. `--game-dir` remains the Wine working directory; the tested path
+helper computes the patched launch entry from `--install-dir`.
 
 To restore the native launch entry, quit Steam and run:
 

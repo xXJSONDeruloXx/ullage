@@ -56,7 +56,8 @@ is_helper_name() {
     case "$1" in
         winedevice.exe|wineboot.exe|services.exe|plugplay.exe|svchost.exe|\
         rpcss.exe|conhost.exe|start.exe|explorer.exe|tabtip.exe|\
-        steamservice.exe|winewrapper|wine-preloader|wine64-preloader)
+        steamservice.exe|UnityCrashHandler.exe|UnityCrashHandler32.exe|\
+        UnityCrashHandler64.exe|winewrapper|wine-preloader|wine64-preloader)
             return 0
             ;;
         *)
