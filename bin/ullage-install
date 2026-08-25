@@ -51,6 +51,7 @@ Options:
   --cloud-native-platform NAME platform in the local override (default: Windows)
   --cloud-native-base PATH     MacAppSupport base (default: ~/Library/Application Support)
   --cloud-native-addpath-root NAME  relative root under MacAppSupport (default: Ullage)
+  --cloud-steam-account-name NAME   Steam login name for SteamCloudDocuments (auto)
   --force                     replace an existing external mapping
   --help
 
@@ -83,6 +84,7 @@ CLOUD_NATIVE_PLATFORM=${CLOUD_NATIVE_PLATFORM:-Windows}
 CLOUD_NATIVE_BASE=${CLOUD_NATIVE_BASE:-$HOME_VALUE/Library/Application Support}
 CLOUD_NATIVE_ADDPATH_ROOT=${CLOUD_NATIVE_ADDPATH_ROOT:-Ullage}
 CLOUD_STEAM3_ACCOUNT_ID=${CLOUD_STEAM3_ACCOUNT_ID:-}
+CLOUD_STEAM_ACCOUNT_NAME=${CLOUD_STEAM_ACCOUNT_NAME:-auto}
 FORCE=0
 
 while [ "$#" -gt 0 ]; do
@@ -114,6 +116,7 @@ while [ "$#" -gt 0 ]; do
         --cloud-native-platform) [ "$#" -ge 2 ] || die "--cloud-native-platform requires a value"; CLOUD_NATIVE_PLATFORM=$2; shift 2 ;;
         --cloud-native-base) [ "$#" -ge 2 ] || die "--cloud-native-base requires a path"; CLOUD_NATIVE_BASE=$2; shift 2 ;;
         --cloud-native-addpath-root) [ "$#" -ge 2 ] || die "--cloud-native-addpath-root requires a value"; CLOUD_NATIVE_ADDPATH_ROOT=$2; shift 2 ;;
+        --cloud-steam-account-name) [ "$#" -ge 2 ] || die "--cloud-steam-account-name requires a value"; CLOUD_STEAM_ACCOUNT_NAME=$2; shift 2 ;;
         --force) FORCE=1; shift ;;
         --help|-h) usage; exit 0 ;;
         *) die "unknown option: $1" ;;
@@ -369,6 +372,8 @@ if [ "$CLOUD_NATIVE" -eq 1 ]; then
         --platform "$CLOUD_NATIVE_PLATFORM" \
         --steam-root "$STEAM_ROOT" \
         --steam3-account-id "$CLOUD_STEAM3_ACCOUNT_ID" \
+        --install-dir "$INSTALL_DIR" \
+        --steam-account-name "$CLOUD_STEAM_ACCOUNT_NAME" \
         --state-out "$CLOUD_STATE_TMP"
     CLOUD_NATIVE_APPLIED=1
 fi

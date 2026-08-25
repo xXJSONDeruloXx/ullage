@@ -2,10 +2,11 @@
 """Make native Steam Cloud resolve a Windows UFS root through a Wine prefix.
 
 Native macOS Steam evaluates Auto-Cloud against the host platform selected for
-the client.  When Ullage forces the client to select Windows depots, a
-Windows-only ``WinAppData*`` root otherwise has no usable macOS path.  This
-small adapter adds a local ``os=Windows`` UFS root override and symlinks the
-corresponding MacAppSupport path to the exact Wine prefix directory.
+the client.  When Ullage forces the client to select Windows depots, Windows
+roots and the Windows-side forms of the all-platform roots need to point at
+the same files inside the Wine prefix.  This small adapter adds a local
+``os=Windows`` UFS root override and symlinks the corresponding MacAppSupport
+path to the exact target directory.
 
 The appinfo file must be edited while Steam is fully stopped.  The state file
 records only entries and symlinks owned by Ullage, so restore can refuse to
@@ -78,6 +79,54 @@ def resolve_wine_user(prefix, requested):
     )
 
 
+def resolve_steam_account_name(steam_root, requested, steam3_account_id):
+    """Resolve the login name used by SteamCloudDocuments on Windows."""
+    requested = str(requested or "").strip()
+    if requested and requested.lower() != "auto":
+        return requested
+
+    if not steam_root:
+        raise NativeCloudError(
+            "SteamCloudDocuments needs --steam-root or --cloud-steam-account-name"
+        )
+    loginusers = Path(steam_root).expanduser() / "config" / "loginusers.vdf"
+    try:
+        text = loginusers.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise NativeCloudError(
+            f"cannot read Steam login users: {loginusers}"
+        ) from exc
+
+    users = []
+    for match in re.finditer(r'"(\d{17})"\s*\{([^{}]*)\}', text, re.DOTALL):
+        account = re.search(r'"AccountName"\s+"((?:\\.|[^"\\])*)"', match.group(2))
+        if account:
+            name = re.sub(r"\\(.)", r"\1", account.group(1))
+            users.append((match.group(1), name))
+
+    if steam3_account_id:
+        try:
+            steam_id = str(76561197960265728 + int(steam3_account_id))
+        except (TypeError, ValueError) as exc:
+            raise NativeCloudError(
+                f"invalid Steam3 account ID: {steam3_account_id}"
+            ) from exc
+        matches = [name for account_id, name in users if account_id == steam_id]
+        if len(matches) == 1:
+            return matches[0]
+        raise NativeCloudError(
+            f"Steam account ID {steam3_account_id} is not present in {loginusers}"
+        )
+
+    names = sorted({name for _, name in users})
+    if len(names) == 1:
+        return names[0]
+    raise NativeCloudError(
+        "cannot determine the Steam account name automatically; pass "
+        "--cloud-steam-account-name"
+    )
+
+
 def app_ufs(appinfo, appid):
     try:
         return appinfo.records[appid].sections["appinfo"].get("ufs", {})
@@ -95,6 +144,26 @@ def supported_roots(appinfo, appid):
             continue
         root = pattern.get("root")
         if root in CLOUD_PATH.ROOTS and root not in roots:
+            roots.append(root)
+    return roots
+
+
+def unsupported_windows_roots(appinfo, appid):
+    """Return unknown Windows-specific UFS roots instead of guessing them."""
+    savefiles = app_ufs(appinfo, appid).get("savefiles", {})
+    if not isinstance(savefiles, dict):
+        return []
+    roots = []
+    for pattern in savefiles.values():
+        if not isinstance(pattern, dict):
+            continue
+        root = pattern.get("root")
+        if (
+            isinstance(root, str)
+            and (root.startswith("Win") or root.startswith("Windows"))
+            and root not in CLOUD_PATH.ROOTS
+            and root not in roots
+        ):
             roots.append(root)
     return roots
 
@@ -255,7 +324,14 @@ def _sha1(filename):
 
 
 def seed_local_remote_cache(
-    steam_root, appid, prefix, wine_user, account_id, appinfo
+    steam_root,
+    appid,
+    prefix,
+    wine_user,
+    account_id,
+    appinfo,
+    install_dir=None,
+    steam_account_name=None,
 ):
     """Seed only missing prefix files from Steam's already-local remote cache.
 
@@ -309,7 +385,14 @@ def seed_local_remote_cache(
                 for rule in rules
                 if _savefile_matches(remote_name, rule)
             )
-            target = CLOUD_PATH.resolve(prefix, wine_user, root, remote_name)
+            target = CLOUD_PATH.resolve(
+                prefix,
+                wine_user,
+                root,
+                remote_name,
+                install_dir,
+                steam_account_name,
+            )
             if target.exists() or target.is_symlink():
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -335,6 +418,8 @@ def install(
     state_out,
     steam_root=None,
     steam3_account_id="",
+    install_dir=None,
+    steam_account_name="",
 ):
     """Install overrides and symlinks, returning the recorded state."""
     appinfo_filename = Path(appinfo_filename).expanduser()
@@ -344,8 +429,22 @@ def install(
     addpath_root = normalize_addpath_root(addpath_root)
     appinfo = APPINFO.AppInfo(appinfo_filename)
     roots = supported_roots(appinfo, appid)
+    unsupported = unsupported_windows_roots(appinfo, appid)
+    if unsupported:
+        raise NativeCloudError(
+            "unsupported Windows Cloud root(s): " + ", ".join(unsupported)
+        )
     if not roots:
         raise NativeCloudError(f"AppID {appid} has no supported Windows Cloud root")
+    install_dir = Path(install_dir).expanduser().resolve() if install_dir else None
+    if "gameinstall" in roots and (install_dir is None or not install_dir.is_dir()):
+        raise NativeCloudError(
+            "gameinstall Cloud root requires an existing Steam install directory"
+        )
+    if "SteamCloudDocuments" in roots:
+        steam_account_name = resolve_steam_account_name(
+            steam_root, steam_account_name, steam3_account_id
+        )
     wine_user = resolve_wine_user(prefix, user)
     record = _cloud_record(appinfo, appid)
     ufs = record.setdefault("ufs", {})
@@ -360,7 +459,13 @@ def install(
     try:
         for root in roots:
             addpath = addpath_for(appid, root, len(roots), addpath_root)
-            target = CLOUD_PATH.resolve(prefix, wine_user, root)
+            target = CLOUD_PATH.resolve(
+                prefix,
+                wine_user,
+                root,
+                install_dir=install_dir,
+                steam_account_name=steam_account_name,
+            )
             target.mkdir(parents=True, exist_ok=True)
             link = link_for(native_base, addpath)
             existing_key = None
@@ -407,6 +512,8 @@ def install(
             wine_user,
             steam3_account_id,
             appinfo,
+            install_dir,
+            steam_account_name,
         )
         state = {
             "version": 1,
@@ -416,6 +523,8 @@ def install(
             "addpath_root": addpath_root.strip("/"),
             "prefix": str(prefix),
             "user": wine_user,
+            "install_dir": str(install_dir) if install_dir else "",
+            "steam_account_name": steam_account_name,
             "entries": entries,
             "seeded_files": seeded_files,
         }
@@ -486,6 +595,8 @@ def main():
     install_parser.add_argument("--platform", default="Windows")
     install_parser.add_argument("--steam-root")
     install_parser.add_argument("--steam3-account-id", default="")
+    install_parser.add_argument("--install-dir")
+    install_parser.add_argument("--steam-account-name", default="")
     install_parser.add_argument("--state-out", required=True)
 
     restore_parser = subparsers.add_parser("restore")
@@ -506,6 +617,8 @@ def main():
                 args.state_out,
                 args.steam_root,
                 args.steam3_account_id,
+                args.install_dir,
+                args.steam_account_name,
             )
             print(f"appid={state['appid']}")
             print(f"user={state['user']}")

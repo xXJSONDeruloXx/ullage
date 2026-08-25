@@ -52,6 +52,10 @@ case "$INSTALL_HELP" in
     *"--cloud-steam3-account-id ID"*) ;;
     *) printf '%s\n' 'installer missing native Cloud seed account option' >&2; exit 1 ;;
 esac
+case "$INSTALL_HELP" in
+    *"--cloud-steam-account-name NAME"*) ;;
+    *) printf '%s\n' 'installer missing SteamCloudDocuments account option' >&2; exit 1 ;;
+esac
 case "$INSTALL_HELP$BRIDGE_HELP" in
     *"--cloud-sync-command"*|*"--cloud-cdp"*)
         printf '%s\n' 'external Cloud fallback options remain exposed' >&2

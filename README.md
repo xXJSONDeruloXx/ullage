@@ -186,8 +186,8 @@ the recorded entry as an optimistic concurrency check, and refuses to
 overwrite a foreign mapping unless `--force` is explicit. It does not recreate
 missing runtime state; reinstall or restore that state first.
 
-For a Windows-only game's `WinAppData*` files, `--cloud-native` is the supported
-path. It edits the local UFS metadata while Steam is stopped, adding an
+For a Windows depot's Auto-Cloud files, `--cloud-native` is the supported path.
+It edits the local UFS metadata while Steam is stopped, adding an
 `os=Windows` `useinstead=MacAppSupport` override that matches the forced depot
 platform. It then creates a guarded symlink such as:
 
@@ -195,6 +195,27 @@ platform. It then creates a guarded symlink such as:
 ~/Library/Application Support/Ullage/848350
     -> <Wine prefix>/drive_c/users/steamuser/AppData/Local
 ~~~
+
+The native mapper covers these Windows/all-platform roots:
+
+| UFS root | Wine target |
+| --- | --- |
+| `WindowsHome` | the Wine user's home directory |
+| `WinMyDocuments` | `Documents` |
+| `WinAppDataLocal` | `AppData/Local` |
+| `WinAppDataLocalLow` | `AppData/LocalLow` |
+| `WinAppDataRoaming` | `AppData/Roaming` |
+| `WinSavedGames` | `Saved Games` |
+| `WinProgramData` | prefix `ProgramData` |
+| `SteamCloudDocuments` | `Documents/Steam Cloud/<Steam login>/<game folder>` |
+| `gameinstall` | the Steam install directory |
+
+`SteamCloudDocuments` uses the Windows path convention even though its root is
+available on all platforms. Ullage derives the Steam login name from
+`config/loginusers.vdf`; `--cloud-steam-account-name` is available when the
+client has multiple login records. `gameinstall` and
+`SteamCloudDocuments` use the install directory already supplied to
+`ullage-install` via `--install-dir`.
 
 Native Steam consequently watches, downloads, uploads, hashes, and records the
 real prefix files itself. The generated mapping is recorded in
@@ -227,8 +248,12 @@ claim: titles with different UFS roots, path transforms, or a Steam metadata
 refresh still need acceptance testing.
 
 The external token, CEF/CDP, and pre/post lifecycle fallback paths were
-removed deliberately. If a title's UFS roots cannot be mapped natively,
-Ullage fails at setup instead of starting a second Cloud transport.
+removed deliberately. Mac/Linux roots that appear as alternatives in a
+cross-platform UFS record are not Windows game paths and are ignored. Ullage
+maps every recognized Windows/all-platform root in a mixed record, fails on an
+unknown Windows-specific root instead of guessing, and fails when a requested
+native mapping has no recognized root. The install output and recorded state
+list exactly which roots were mapped.
 Older generated configs may still contain the removed `CLOUD_*` assignments;
 the bridge ignores those inert values, while external scripts using the
 removed command-line options must migrate to `--cloud-native`.
@@ -239,15 +264,19 @@ synchronized for this app,” its local `remotecache.vdf` contained both save
 records, and native Play/Stop completed through the PR branch without any
 browser or token-based transfer.
 
-Two additional fresh checks cover different depot and runtime shapes. Sonic
-Mania was mapped from a new state directory as a 32-bit PE executable; native
-Play showed Running, Cloud showed synchronized, and native Stop left no Wine
-processes. FAR: Lone Sails was downloaded through Steam into a previously
-uninstalled library entry, then mapped as a 64-bit Unity Windows depot with a
-nested executable and `WinAppDataLocalLow` Cloud root. Unity initialized
-SteamManager, Steam showed synchronized after the prefix files appeared, and
-native Stop reaped the Wine session cleanly. The FAR install remains on disk
-after the reversible mapping test.
+Additional fresh checks cover different depot and runtime shapes. Sonic Mania
+was mapped from a new state directory as a 32-bit PE executable with both its
+`WinAppDataLocal` and `SteamCloudDocuments` roots. Native Steam created
+`steam_autocloud.vdf` below the mapped prefix-side
+`Documents/Steam Cloud/<Steam login>/Sonic Mania/SavesDir` path, and the Wine session
+exited cleanly with no remaining processes. FAR: Lone Sails was downloaded
+through Steam into a previously uninstalled library entry, then mapped as a
+64-bit Unity Windows depot with a nested executable and
+`WinAppDataLocalLow` Cloud root. Unity initialized SteamManager, Steam showed
+synchronized after the prefix files appeared, and native Stop reaped the Wine
+session cleanly. A second real run mapped Thumper's `gameinstall` root and
+Steam watched its three existing `savedata` files through the install-directory
+symlink. The FAR and Thumper installs remain on disk after the reversible tests.
 
 For games whose Windows executable is nested below the install root (for
 example, `windows/Game.exe`), set `--install-dir` to the Steam install
@@ -282,10 +311,13 @@ Peggle, Katamari, Sonic Mania, and FAR: Lone Sails. Visible rendering and
 native overlay attachment are proven on some renderer paths. That is evidence
 for the boundary, not a universal compatibility claim.
 
-Steam Cloud root resolution is proven across multiple Windows UFS roots, and a
-reversible changed-file upload round trip is proven through the native path for
-RACCOIN. Steam's virtual-gamepad handoff is live-verified, but physical
-controller behavior is not yet tested on this host. Full DRM certification,
+Steam Cloud root resolution is unit-tested across all supported Windows and
+all-platform roots, and a reversible changed-file upload round trip is proven
+through the native path for RACCOIN. Sonic's expanded real-game run also
+proved the `SteamCloudDocuments` mapping by observing Steam's generated file
+inside the prefix. Steam's virtual-gamepad handoff is live-verified, but
+physical controller behavior is not yet tested on this host.
+Full DRM certification,
 conflict policy, and all Unity/D3DMetal window paths still need per-title
 acceptance tests. The bridge records Steamworks transport and lifecycle
 evidence, but it does not claim that every game renderer, DRM scheme, or cloud

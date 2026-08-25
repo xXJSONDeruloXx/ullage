@@ -4,6 +4,7 @@
 import importlib.util
 import hashlib
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
 
 
@@ -28,6 +29,21 @@ except MODULE.NativeCloudError:
     pass
 else:
     raise AssertionError("unsafe native Cloud addpath was accepted")
+
+unknown = SimpleNamespace(
+    records={
+        42: SimpleNamespace(
+            sections={
+                "appinfo": {
+                    "ufs": {
+                        "savefiles": {"0": {"root": "WinFutureRoot"}}
+                    }
+                }
+            }
+        )
+    }
+)
+assert MODULE.unsupported_windows_roots(unknown, 42) == ["WinFutureRoot"]
 
 
 def sections():
@@ -67,6 +83,33 @@ def sonic_sections():
                         "path": "",
                         "pattern": "*.bin",
                     }
+                }
+            },
+        }
+    }
+
+
+def extended_sections():
+    return {
+        "appinfo": {
+            "config": {"launch": {"0": {"executable": "Game.exe"}}},
+            "ufs": {
+                "savefiles": {
+                    "0": {
+                        "root": "WindowsHome",
+                        "path": "Documents/Stellar",
+                        "pattern": "*.sav",
+                    },
+                    "1": {
+                        "root": "gameinstall",
+                        "path": "saves",
+                        "pattern": "*.dat",
+                    },
+                    "2": {
+                        "root": "SteamCloudDocuments",
+                        "path": "SavesDir",
+                        "pattern": "*.sav",
+                    },
                 }
             },
         }
@@ -178,5 +221,84 @@ for version in (MODULE.APPINFO.APPINFO_28, MODULE.APPINFO.APPINFO_29):
         assert [Path(item).resolve() for item in state["seeded_files"]] == [
             seeded.resolve()
         ]
+
+for version in (MODULE.APPINFO.APPINFO_28, MODULE.APPINFO.APPINFO_29):
+    with tempfile.TemporaryDirectory() as directory:
+        base = Path(directory)
+        appinfo_file = base / "appinfo.vdf"
+        appinfo_file.write_bytes(
+            APPINFO_TEST.make_appinfo(version, sections=extended_sections())
+        )
+        prefix = base / "prefix"
+        prefix.mkdir()
+        (prefix / "system.reg").write_text("", encoding="utf-8")
+        (prefix / "user.reg").write_text(
+            '"USERPROFILE"="C:\\\\users\\\\steamuser"\n', encoding="utf-8"
+        )
+        install_dir = base / "SteamApps" / "common" / "Example Game"
+        install_dir.mkdir(parents=True)
+        steam_root = base / "Steam"
+        (steam_root / "config").mkdir(parents=True)
+        (steam_root / "config" / "loginusers.vdf").write_text(
+            '"users"\n{\n'
+            '  "76561198352563669"\n'
+            '  {\n'
+            '    "AccountName" "test-account"\n'
+            '  }\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        assert (
+            MODULE.resolve_steam_account_name(steam_root, "auto", "")
+            == "test-account"
+        )
+        assert (
+            MODULE.resolve_steam_account_name(steam_root, "manual-name", "")
+            == "manual-name"
+        )
+        state_file = base / "state.json"
+        state = MODULE.install(
+            appinfo_file,
+            42,
+            prefix,
+            "auto",
+            base / "Application Support",
+            "Ullage",
+            "Windows",
+            state_file,
+            steam_root,
+            "392297941",
+            install_dir,
+            "auto",
+        )
+        assert state["user"] == "steamuser"
+        assert state["steam_account_name"] == "test-account"
+        assert [entry["root"] for entry in state["entries"]] == [
+            "WindowsHome",
+            "gameinstall",
+            "SteamCloudDocuments",
+        ]
+        assert Path(state["entries"][0]["target"]).resolve() == (
+            prefix / "drive_c/users/steamuser"
+        ).resolve()
+        assert Path(state["entries"][1]["target"]).resolve() == install_dir.resolve()
+        assert Path(state["entries"][2]["target"]).resolve() == (
+            prefix
+            / "drive_c/users/steamuser/Documents/Steam Cloud/test-account/Example Game"
+        ).resolve()
+        assert all(Path(entry["link"]).is_symlink() for entry in state["entries"])
+
+        patched = MODULE.APPINFO.AppInfo(appinfo_file)
+        overrides = patched.records[42].sections["appinfo"]["ufs"]["rootoverrides"]
+        assert [overrides[key]["root"] for key in sorted(overrides)] == [
+            "WindowsHome",
+            "gameinstall",
+            "SteamCloudDocuments",
+        ]
+
+        MODULE.restore(appinfo_file, state_file)
+        restored = MODULE.APPINFO.AppInfo(appinfo_file)
+        assert not restored.records[42].sections["appinfo"]["ufs"]["rootoverrides"]
+        assert all(not Path(entry["link"]).exists() for entry in state["entries"])
 
 print("native cloud overrides: ok")

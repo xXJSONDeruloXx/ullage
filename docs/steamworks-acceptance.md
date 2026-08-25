@@ -35,13 +35,13 @@ the acceptance criterion.
 | ---: | --- | --- | :---: | :---: | :---: | :---: | --- |
 | 8400 | Geometry Wars: Retro Evolved | P | P historically; latest repeats F | I | not configured | P | 32-bit path and overlay were visible in an earlier run; repeatability is an open renderer issue. |
 | 3480 | Peggle Deluxe | P | P | I; overlay observed | not configured | P | Strongest 32-bit legacy control; native Stop cleanup passed. |
-| 584400 | Sonic Mania | P | P | I; native lsteamclient observed | P | P | Mixed-root Cloud mapping and a changed-file round trip were observed. |
+| 584400 | Sonic Mania | P | P | I; native lsteamclient observed | P (`WinAppDataLocal` + `SteamCloudDocuments`) | P | Fresh mixed-root mapping caused Steam to create `steam_autocloud.vdf` under the Wine prefix's Windows `Documents/Steam Cloud` path. |
 | 848350 | Katamari Damacy REROLL | P | P (forwarder staged) | P (x64 probe + native Play) | P (2 files) | P | Canonical-name `steamclient64.dll` forwarder removed the shared x64 SteamAPI stall; native Stop cleanup still passes. |
 | 3784030 | RACCOON: Coin Pusher Roguelike | P | F (black surface) | I | P | P | Native Cloud changed-file upload round trip passed. |
 | 1740930 | JellyCar Worlds | P | F (Unity/server failure) | I | P (22 files) | P | Cloud mapping works; game process does not reach a usable surface. |
 | 304430 | INSIDE | P | F | I | no supported Windows root | P | Fresh Play-button run reached Wine; the post-fix secondary launch stayed alive 44s with a black full-screen surface and stopped cleanly via TERM. |
 | 334940 | Yoku's Island Express | P | F | I | no supported Windows root | P | Fresh Play-button run reached Wine and exited 0 without a visible surface. |
-| 356400 | Thumper | P | F | I | no supported Windows root | P | Default Win8 entry and the separate DX9 experiment both reached Wine; no surface. |
+| 356400 | Thumper | P | F | I | P (`gameinstall`) | P | Fresh Win8 run watched all three existing `savedata` files through the mapped Steam install directory; no surface. |
 | 990630 | The Last Campfire | P | F | I | P (native mapping installed) | P | Fresh Play-button run reached Wine and exited 0 without a visible surface. |
 
 The `P` lifecycle result means native Steam emitted an `App Running` transition,
@@ -121,6 +121,14 @@ the [Steam Cloud documentation](https://partner.steamgames.com/doc/features/clou
 The native Steam badge is therefore authoritative. A mapped prefix file and a
 green badge are related outcomes, but one must not be synthesized by editing
 `remotecache.vdf`.
+
+The native mapper currently handles `WindowsHome`, the four Windows AppData/
+Documents roots, `WinProgramData`, `SteamCloudDocuments`, and `gameinstall`.
+Mac/Linux roots in a mixed UFS record are platform alternatives and are not
+mapped into the forced Windows prefix. An unknown Windows-prefixed root fails
+setup rather than being guessed. `SteamCloudDocuments` uses the Windows
+`Documents/Steam Cloud/<login>/<game>` layout; its login name comes from
+Steam's `loginusers.vdf` unless explicitly supplied.
 
 ## Depot and compatibility-tool boundary
 
