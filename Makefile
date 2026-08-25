@@ -19,6 +19,7 @@ check:
 	@$(PYTHON3) tests/test_appinfo.py
 	@$(PYTHON3) -m py_compile bin/ullage-cloud-path.py
 	@$(PYTHON3) tests/test_cloud_path.py
+	@$(PYTHON3) -m py_compile bin/ullage-cloud-sync.py
 
 clean:
 	@if test -e bin/ullage-fd-exec; then unlink bin/ullage-fd-exec; fi

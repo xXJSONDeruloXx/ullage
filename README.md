@@ -62,6 +62,8 @@ directory out of version control.
   launch record used by native macOS Steam.
 * bin/ullage-cloud-path.py — deterministic mapping of Windows Steam Cloud
   roots into the selected Wine prefix; transport is intentionally separate.
+* bin/ullage-cloud-sync.py — read-only Steam Cloud enumeration and optional
+  prefix download using `ULLAGE_STEAM_ACCESS_TOKEN`; uploads remain gated.
 * bin/ullage-fd-exec — universal descriptor-boundary helper, built from
   src/ullage-fd-exec.c.
 * runtime/README.md — runtime and lsteamclient contract. The large third-party
