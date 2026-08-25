@@ -221,9 +221,8 @@ deliberately nonstandard prefix.
 The badge is now part of the native path rather than a UI fiction. Once the
 override points at the prefix, Steam's own Auto-Cloud resolver updates
 `remotecache.vdf` and the normal macOS client displays the ordinary current
-Cloud state. This is proven locally for Katamari Damacy REROLL (2 files),
-JellyCar Worlds (22 files), RACCOON (12 files), and Sonic Mania's mixed-root
-configuration after its one-time local-cache seed. It is not yet a universal
+Cloud state. This is proven locally for Katamari Damacy REROLL, JellyCar
+Worlds, RACCOON, Sonic Mania, and FAR: Lone Sails. It is not yet a universal
 claim: titles with different UFS roots, path transforms, or a Steam metadata
 refresh still need acceptance testing.
 
@@ -239,6 +238,16 @@ state directory: native Steam displayed “Your Steam Cloud files are
 synchronized for this app,” its local `remotecache.vdf` contained both save
 records, and native Play/Stop completed through the PR branch without any
 browser or token-based transfer.
+
+Two additional fresh checks cover different depot and runtime shapes. Sonic
+Mania was mapped from a new state directory as a 32-bit PE executable; native
+Play showed Running, Cloud showed synchronized, and native Stop left no Wine
+processes. FAR: Lone Sails was downloaded through Steam into a previously
+uninstalled library entry, then mapped as a 64-bit Unity Windows depot with a
+nested executable and `WinAppDataLocalLow` Cloud root. Unity initialized
+SteamManager, Steam showed synchronized after the prefix files appeared, and
+native Stop reaped the Wine session cleanly. The FAR install remains on disk
+after the reversible mapping test.
 
 For games whose Windows executable is nested below the install root (for
 example, `windows/Game.exe`), set `--install-dir` to the Steam install
@@ -269,11 +278,11 @@ To restore the native launch entry, quit Steam and run:
 
 The launch architecture is proven across both 32-bit legacy and 64-bit Unity
 Windows titles in the local experiment, including native Steam Stop cleanup on
-Peggle and Katamari. Visible rendering and native overlay attachment are proven
-on some renderer paths. That is evidence for the boundary, not a universal
-compatibility claim.
+Peggle, Katamari, Sonic Mania, and FAR: Lone Sails. Visible rendering and
+native overlay attachment are proven on some renderer paths. That is evidence
+for the boundary, not a universal compatibility claim.
 
-Steam Cloud root resolution is proven for four Windows-only titles, and a
+Steam Cloud root resolution is proven across multiple Windows UFS roots, and a
 reversible changed-file upload round trip is proven through the native path for
 RACCOIN. Steam's virtual-gamepad handoff is live-verified, but physical
 controller behavior is not yet tested on this host. Full DRM certification,
