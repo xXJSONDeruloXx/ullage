@@ -124,6 +124,16 @@ The generated launcher receives Steam's game arguments and the bridge waits
 for Wine to exit before reaping prefix-owned helper processes, so Steam sees
 one supervised launch boundary.
 
+Cloud lifecycle hooks are available without changing the Play mapping. Set an
+external command with `--cloud-sync-command`; Ullage runs it once with
+`ULLAGE_CLOUD_PHASE=pre` before Wine and once with `post` after Wine/reaping.
+The command also receives `ULLAGE_APPID`, `ULLAGE_PREFIX`, `ULLAGE_APPINFO`,
+`ULLAGE_STEAM_ROOT`, `ULLAGE_STEAM3_ACCOUNT_ID`, and `ULLAGE_WINE_USER`. This
+keeps credentials out of generated appinfo and lets one reusable hook invoke
+`ullage-cloud-sync.py` with `--download` before launch and `--upload` after
+exit. Upload is explicit local-wins behavior and should not be enabled until
+the title's conflict policy is understood.
+
 For games whose Windows executable is nested below the install root (for
 example, `windows/Game.exe`), set `--game-dir` to the Steam install directory,
 not the nested executable directory. Steam resolves the patched launch entry

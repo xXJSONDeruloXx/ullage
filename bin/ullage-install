@@ -36,6 +36,9 @@ Options:
   --legacy-steam              require staged 32-bit Steam DLLs
   --preserve-steam-transport  retain Steam's launch dylibs and IPC descriptors (default)
   --clean-steam-transport     close inherited Steam descriptors and skip overlay injection
+  --cloud-sync-command CMD    optional pre/post launch Cloud adapter command
+  --cloud-steam3-account-id ID Steam3 account ID for the Cloud adapter
+  --cloud-wine-user NAME       Wine user directory for the Cloud adapter
   --force                     replace an existing external mapping
   --help
 
@@ -58,6 +61,9 @@ WINE_DEBUG_VALUE=${WINEDEBUG:--all}
 WINEMSYNC_VALUE=${WINEMSYNC:-1}
 LEGACY_STEAM=0
 PRESERVE_STEAM_TRANSPORT=1
+CLOUD_SYNC_COMMAND=${CLOUD_SYNC_COMMAND:-}
+CLOUD_STEAM3_ACCOUNT_ID=${CLOUD_STEAM3_ACCOUNT_ID:-}
+CLOUD_WINE_USER=${CLOUD_WINE_USER:-${USER:-}}
 FORCE=0
 
 while [ "$#" -gt 0 ]; do
@@ -78,6 +84,9 @@ while [ "$#" -gt 0 ]; do
         --no-legacy-steam) LEGACY_STEAM=0; shift ;;
         --preserve-steam-transport) PRESERVE_STEAM_TRANSPORT=1; shift ;;
         --clean-steam-transport) PRESERVE_STEAM_TRANSPORT=0; shift ;;
+        --cloud-sync-command) [ "$#" -ge 2 ] || die "--cloud-sync-command requires a value"; CLOUD_SYNC_COMMAND=$2; shift 2 ;;
+        --cloud-steam3-account-id) [ "$#" -ge 2 ] || die "--cloud-steam3-account-id requires a value"; CLOUD_STEAM3_ACCOUNT_ID=$2; shift 2 ;;
+        --cloud-wine-user) [ "$#" -ge 2 ] || die "--cloud-wine-user requires a value"; CLOUD_WINE_USER=$2; shift 2 ;;
         --force) FORCE=1; shift ;;
         --help|-h) usage; exit 0 ;;
         *) die "unknown option: $1" ;;
@@ -244,6 +253,9 @@ fi
     printf 'LOG_FILE=%s\n' "$(shell_quote "$LOG_FILE")"
     printf 'LEGACY_STEAM=%s\n' "$(shell_quote "$LEGACY_STEAM")"
     printf 'PRESERVE_STEAM_TRANSPORT=%s\n' "$(shell_quote "$PRESERVE_STEAM_TRANSPORT")"
+    printf 'CLOUD_SYNC_COMMAND=%s\n' "$(shell_quote "$CLOUD_SYNC_COMMAND")"
+    printf 'CLOUD_STEAM3_ACCOUNT_ID=%s\n' "$(shell_quote "$CLOUD_STEAM3_ACCOUNT_ID")"
+    printf 'CLOUD_WINE_USER=%s\n' "$(shell_quote "$CLOUD_WINE_USER")"
     printf 'WINE_DEBUG_VALUE=%s\n' "$(shell_quote "$WINE_DEBUG_VALUE")"
     printf 'WINEMSYNC_VALUE=%s\n' "$(shell_quote "$WINEMSYNC_VALUE")"
 } >"$CONFIG_TMP"

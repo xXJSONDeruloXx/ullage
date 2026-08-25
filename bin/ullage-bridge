@@ -37,6 +37,7 @@ Runtime options:
   --legacy-steam              require staged 32-bit legacy Steam DLLs
   --preserve-steam-transport  retain Steam's launch dylibs and IPC descriptors (default)
   --clean-steam-transport     close inherited Steam descriptors and skip overlay injection
+  --cloud-sync-command CMD     optional pre/post launch Cloud adapter command
   --dry-run                   validate and print the resolved launch
   --help
 
@@ -62,6 +63,9 @@ DRY_RUN=0
 WINE_DEBUG_VALUE=${WINE_DEBUG_VALUE:--all}
 WINEMSYNC_VALUE=${WINEMSYNC_VALUE:-1}
 PRESERVE_STEAM_TRANSPORT=1
+CLOUD_SYNC_COMMAND=${CLOUD_SYNC_COMMAND:-}
+CLOUD_STEAM3_ACCOUNT_ID=${CLOUD_STEAM3_ACCOUNT_ID:-}
+CLOUD_WINE_USER=${CLOUD_WINE_USER:-${USER:-}}
 
 load_config() {
     config_path=$1
@@ -161,6 +165,21 @@ while [ "$#" -gt 0 ]; do
         --clean-steam-transport)
             PRESERVE_STEAM_TRANSPORT=0
             shift
+            ;;
+        --cloud-sync-command)
+            [ "$#" -ge 2 ] || die "--cloud-sync-command requires a value"
+            CLOUD_SYNC_COMMAND=$2
+            shift 2
+            ;;
+        --cloud-steam3-account-id)
+            [ "$#" -ge 2 ] || die "--cloud-steam3-account-id requires a value"
+            CLOUD_STEAM3_ACCOUNT_ID=$2
+            shift 2
+            ;;
+        --cloud-wine-user)
+            [ "$#" -ge 2 ] || die "--cloud-wine-user requires a value"
+            CLOUD_WINE_USER=$2
+            shift 2
             ;;
         --no-legacy-steam)
             LEGACY_STEAM=0
@@ -328,7 +347,24 @@ SDL_IGNORE_DEVICES_VALUE=${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}
     printf '[ullage-bridge] host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf '[ullage-bridge] win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
     printf '[ullage-bridge] preserve_steam_transport=%s\n' "$PRESERVE_STEAM_TRANSPORT"
+    printf '[ullage-bridge] cloud_sync=%s\n' "${CLOUD_SYNC_COMMAND:+enabled}"
 } >>"$LOG_FILE" 2>&1
+
+run_cloud_sync() {
+    phase=$1
+    [ -n "$CLOUD_SYNC_COMMAND" ] || return 0
+    ULLAGE_CLOUD_PHASE=$phase \
+    ULLAGE_APPID=$APP_ID \
+    ULLAGE_PREFIX=$PREFIX \
+    ULLAGE_GAME_EXE=$GAME_EXE \
+    ULLAGE_STEAM_ROOT=$STEAM_ROOT \
+    ULLAGE_APPINFO=$STEAM_ROOT/appcache/appinfo.vdf \
+    ULLAGE_STEAM3_ACCOUNT_ID=$CLOUD_STEAM3_ACCOUNT_ID \
+    ULLAGE_WINE_USER=$CLOUD_WINE_USER \
+        /bin/sh -c "$CLOUD_SYNC_COMMAND" >>"$LOG_FILE" 2>&1
+}
+
+run_cloud_sync pre
 
 cd "$GAME_DIR"
 WINE_CHILD_PID=
@@ -354,6 +390,8 @@ wait_and_reap() {
 
     "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" >>"$LOG_FILE" 2>&1 ||
         printf '[ullage-bridge] reaper failed for prefix=%s\n' "$PREFIX" >>"$LOG_FILE"
+    run_cloud_sync post ||
+        printf '[ullage-bridge] cloud post-sync failed for appid=%s\n' "$APP_ID" >>"$LOG_FILE"
     return "$wine_exit"
 }
 

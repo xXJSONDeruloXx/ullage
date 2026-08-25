@@ -13,6 +13,7 @@ import os
 import sys
 import urllib.parse
 import urllib.request
+import hashlib
 from pathlib import Path
 
 import importlib.util
@@ -50,6 +51,21 @@ def request_json(url, params, token):
         return json.load(response)
 
 
+def post_json(endpoint, payload, token):
+    body = urllib.parse.urlencode({
+        "access_token": token,
+        "input_json": json.dumps(payload, separators=(",", ":")),
+    }).encode()
+    request = urllib.request.Request(
+        f"https://api.steampowered.com/ICloudService/{endpoint}/v1/",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "Ullage/0.1"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response).get("response", {})
+
+
 def enumerate_files(appid, token):
     payload = request_json(
         "https://api.steampowered.com/ICloudService/EnumerateUserFiles/v1/",
@@ -69,6 +85,84 @@ def safe_destination(prefix, user, filename, patterns, steam3_id):
     return None
 
 
+def local_files(prefix, user, patterns, steam3_id):
+    for pattern in patterns:
+        root = pattern.get("root")
+        base = CLOUD_PATH.resolve(prefix, user, root, str(pattern.get("path", "")).replace("{Steam3AccountID}", str(steam3_id)))
+        if not base.exists():
+            continue
+        for candidate in base.rglob("*"):
+            if candidate.is_file():
+                relative = candidate.relative_to(base).as_posix()
+                yield steam_filename(pattern, steam3_id) + "/" + relative, candidate
+
+
+def sha1(filename):
+    digest = hashlib.sha1()
+    with filename.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def upload_files(appid, token, prefix, user, patterns, steam3_id, remote):
+    remote_by_name = {item.get("filename"): item for item in remote}
+    candidates = []
+    for cloud_name, filename in local_files(prefix, user, patterns, steam3_id):
+        digest = sha1(filename)
+        if remote_by_name.get(cloud_name, {}).get("file_sha", "").lower() != digest:
+            candidates.append((cloud_name, filename, digest))
+    if not candidates:
+        print("upload_candidates=0")
+        return
+
+    batch = post_json("BeginAppUploadBatch", {
+        "appid": appid,
+        "machine_name": "Ullage macOS",
+        "files_to_upload": [name for name, _, _ in candidates],
+        "files_to_delete": [],
+    }, token)
+    batch_id = batch.get("batch_id") or batch.get("batchid")
+    if not batch_id:
+        raise RuntimeError("Steam Cloud did not return an upload batch id")
+    succeeded = False
+    try:
+        for cloud_name, filename, digest in candidates:
+            data = filename.read_bytes()
+            info = post_json("BeginHTTPUpload", {
+                "appid": appid,
+                "file_size": len(data),
+                "filename": cloud_name,
+                "file_sha": digest,
+                "is_public": 0,
+                "platforms_to_sync": ["all"],
+                "upload_batch_id": batch_id,
+            }, token)
+            blocks = info.get("block_requests") or info.get("blockRequests") or []
+            if not blocks and info.get("url_host"):
+                blocks = [{"url_host": info["url_host"], "url_path": info.get("url_path", "/"), "block_offset": 0, "block_length": len(data), "request_headers": []}]
+            for block in blocks:
+                host = block.get("url_host") or block.get("urlHost")
+                path = block.get("url_path") or block.get("urlPath")
+                if not host or not path:
+                    raise RuntimeError(f"Steam Cloud returned an unusable upload block for {cloud_name}")
+                start = int(block.get("block_offset", block.get("blockOffset", 0)))
+                length = int(block.get("block_length", block.get("blockLength", len(data) - start)))
+                headers = {item.get("name"): item.get("value") for item in block.get("request_headers", block.get("requestHeaders", []))}
+                request = urllib.request.Request(f"https://{host}{path}", data=data[start:start + length], headers=headers, method="PUT")
+                with urllib.request.urlopen(request, timeout=60):
+                    pass
+            committed = post_json("CommitHTTPUpload", {
+                "appid": appid, "transfer_succeeded": 1, "filename": cloud_name, "file_sha": digest,
+            }, token)
+            if committed.get("file_committed") is False:
+                raise RuntimeError(f"Steam Cloud rejected {cloud_name}")
+            print(f"uploaded={cloud_name}")
+        succeeded = True
+    finally:
+        post_json("CompleteAppUploadBatch", {"appid": appid, "upload_batch_id": batch_id, "batch_result": 1 if succeeded else 2}, token)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--appid", required=True, type=int)
@@ -77,6 +171,7 @@ def main():
     parser.add_argument("--user", required=True)
     parser.add_argument("--steam3-account-id", required=True)
     parser.add_argument("--download", action="store_true", help="write matching cloud files into the prefix")
+    parser.add_argument("--upload", action="store_true", help="upload changed local files (local-wins; explicit opt-in)")
     args = parser.parse_args()
     token = os.environ.get("ULLAGE_STEAM_ACCESS_TOKEN", "").strip()
     if not token:
@@ -98,6 +193,8 @@ def main():
             with urllib.request.urlopen(item["url"], timeout=60) as source, destination.open("wb") as target:
                 target.write(source.read())
     print(f"matched={matched}")
+    if args.upload:
+        upload_files(args.appid, token, args.prefix, args.user, patterns, args.steam3_account_id, files)
     return 0
 
 
