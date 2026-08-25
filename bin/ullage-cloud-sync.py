@@ -105,6 +105,31 @@ def sha1(filename):
     return digest.hexdigest()
 
 
+def download_file(url, destination, expected_sha, expected_size):
+    """Download atomically and verify the Cloud metadata before replacement."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.ullage-download")
+    digest = hashlib.sha1()
+    total = 0
+    try:
+        with urllib.request.urlopen(url, timeout=60) as source, temporary.open("wb") as target:
+            while True:
+                block = source.read(1024 * 1024)
+                if not block:
+                    break
+                target.write(block)
+                digest.update(block)
+                total += len(block)
+        if expected_size is not None and total != int(expected_size):
+            raise RuntimeError(f"Cloud download size mismatch for {destination}: {total} != {expected_size}")
+        if expected_sha and digest.hexdigest().lower() != expected_sha.lower():
+            raise RuntimeError(f"Cloud download SHA-1 mismatch for {destination}")
+        temporary.replace(destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 def upload_files(appid, token, prefix, user, patterns, steam3_id, steamid64, remote):
     remote_by_name = {item.get("filename"): item for item in remote}
     candidates = []
@@ -192,8 +217,12 @@ def main():
         print(f"file={item.get('filename')} sha={item.get('file_sha', '')} destination={destination}")
         if args.download:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            with urllib.request.urlopen(item["url"], timeout=60) as source, destination.open("wb") as target:
-                target.write(source.read())
+            download_file(
+                item["url"],
+                destination,
+                item.get("file_sha", ""),
+                item.get("file_size"),
+            )
     print(f"matched={matched}")
     if args.upload:
         upload_files(args.appid, token, args.prefix, args.user, patterns, args.steam3_account_id, steamid64, files)

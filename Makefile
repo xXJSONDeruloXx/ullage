@@ -11,7 +11,7 @@ bin/ullage-fd-exec: src/ullage-fd-exec.c
 
 check:
 	@set -eu; \
-	for script in bin/ullage-bridge bin/ullage-install bin/ullage-remove bin/ullage-reap; do \
+	for script in bin/ullage-bridge bin/ullage-install bin/ullage-remove bin/ullage-reap bin/ullage-cloud-hook; do \
 		sh -n "$$script"; \
 	done
 	@$(PYTHON3) -m py_compile bin/ullage-appinfo.py
@@ -20,6 +20,7 @@ check:
 	@$(PYTHON3) -m py_compile bin/ullage-cloud-path.py
 	@$(PYTHON3) tests/test_cloud_path.py
 	@$(PYTHON3) -m py_compile bin/ullage-cloud-sync.py
+	@$(PYTHON3) tests/test_cloud_sync.py
 
 clean:
 	@if test -e bin/ullage-fd-exec; then unlink bin/ullage-fd-exec; fi
