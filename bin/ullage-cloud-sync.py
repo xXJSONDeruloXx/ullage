@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Synchronize Windows Auto Cloud files into an Ullage Wine prefix.
 
-The native macOS Steam client cannot resolve Windows UFS roots.  This tool
-uses Steam's documented ICloudService read path and the prefix resolver, while
-leaving Steam's appinfo and launcher state untouched.  Upload support is
-intentionally not enabled until conflict handling is proven.
+For Windows-only games without a published macOS root override, the native
+macOS Steam client cannot resolve Windows UFS roots.  This tool uses Steam's
+documented ICloudService read path and the prefix resolver, while leaving
+Steam's appinfo and launcher state untouched.  Upload support is intentionally
+not enabled until conflict handling is proven.
 """
 
 import argparse

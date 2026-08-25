@@ -140,6 +140,17 @@ For a Steam client started with `-cef-enable-debugging`, add `--cloud-cdp` to
 use the native authenticated CEF session for pre-launch downloads. CDP mode is
 read/download-only; post-exit upload is skipped rather than falsely reported.
 
+The Steam Cloud badge has an important boundary. Native Steam is the authority
+for the badge, and it only becomes `Up to date` when that client can resolve the
+game's published Auto-Cloud root on macOS. A Windows-only game's
+`WinAppData*` root is not repaired by changing local `appinfo.vdf`,
+`remotecache.vdf`, or `localconfig.vdf`; the client re-evaluates and overwrites
+those attempts. Ullage therefore keeps prefix Cloud transfer and native Steam
+badge state separate: the hook can verify/download the prefix files, but it
+does not fake Steam's state. A true native badge for such a title needs a
+published macOS root override or a maintained native Steam Cloud resolver
+patch.
+
 For games whose Windows executable is nested below the install root (for
 example, `windows/Game.exe`), set `--game-dir` to the Steam install directory,
 not the nested executable directory. Steam resolves the patched launch entry
