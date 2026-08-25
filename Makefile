@@ -26,6 +26,7 @@ check:
 	@$(PYTHON3) tests/test_cloud_sync.py
 	@$(PYTHON3) tests/test_cloud_native.py
 	@sh tests/test_bridge.sh
+	@sh tests/test_steamworks_probe.sh
 	@node --check bin/ullage-cloud-cdp.mjs
 
 clean:

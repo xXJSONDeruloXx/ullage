@@ -16,6 +16,8 @@ obtained a valid identity, or exercised every Steamworks interface.
   evidence, not an API trace.
 * **Feature** — the feature was deliberately exercised and its native Steam
   result was observed. Do not infer this level from a green Play button.
+* **Stop** — the native Steam Stop action produced an AppID-scoped termination
+  event, the bridge exited, and no selected-prefix Wine processes remained.
 
 The direct Steamworks lifecycle contract is: initialize successfully before
 using interfaces, dispatch callbacks regularly, and shut down during process
@@ -32,9 +34,9 @@ the acceptance criterion.
 | AppID | Title | Depot/launch boundary | Renderer | Steamworks transport | Cloud | Lifecycle | Current note |
 | ---: | --- | --- | :---: | :---: | :---: | :---: | --- |
 | 8400 | Geometry Wars: Retro Evolved | P | P historically; latest repeats F | I | not configured | P | 32-bit path and overlay were visible in an earlier run; repeatability is an open renderer issue. |
-| 3480 | Peggle Deluxe | P | P | I; overlay observed | not configured | P | Strongest 32-bit legacy control. |
+| 3480 | Peggle Deluxe | P | P | I; overlay observed | not configured | P | Strongest 32-bit legacy control; native Stop cleanup passed. |
 | 584400 | Sonic Mania | P | P | I; native lsteamclient observed | P | P | Mixed-root Cloud mapping and a changed-file round trip were observed. |
-| 848350 | Katamari Damacy REROLL | P | F (black surface) | I | P (2 files) | P | Good Cloud/transport test; renderer remains blocked. |
+| 848350 | Katamari Damacy REROLL | P | F (black surface) | I | P (2 files) | P | Good Cloud/transport test; renderer remains blocked, but native Stop cleanup passed. |
 | 3784030 | RACCOON: Coin Pusher Roguelike | P | F (black surface) | I | P | P | Native Cloud changed-file upload round trip passed. |
 | 1740930 | JellyCar Worlds | P | F (Unity/server failure) | I | P (22 files) | P | Cloud mapping works; game process does not reach a usable surface. |
 | 304430 | INSIDE | P | F | I | no supported Windows root | P | Fresh Play-button run reached Wine; the post-fix secondary launch stayed alive 44s with a black full-screen surface and stopped cleanly via TERM. |
@@ -51,19 +53,60 @@ session.
 
 | Feature | Current evidence | Status |
 | --- | --- | :---: |
-| `SteamAPI_Init` | lsteamclient/native transport is present on proven runs, but no game-level API trace or controlled probe is committed | I |
-| Identity (`ISteamUser::GetSteamID`) | Native Steam user/session context is retained; the game’s returned SteamID is not directly logged | I |
-| Ownership/DRM | Entitled Windows depots install and native Steam tracks Play; no title has been certified against a DRM wrapper or ownership API result | I |
-| Achievements/stats | Native library counters are observable, but no controlled unlock → `StoreStats` → relaunch test is complete | pending |
-| DLC | No controlled `BIsDlcInstalled` plus DLC-content launch has been completed | pending |
-| Overlay | Visible overlay attachment was observed with Geometry Wars, Peggle, and Sonic Mania renderer paths | P (title/renderer-specific) |
+| `SteamAPI_Init` | Direct Katamari probe passed with the shipped 32-bit `steam_api.dll`; the shipped 64-bit `steam_api64.dll` loaded but timed out inside the current x64 lsteamclient initialization path | P (win32); F (win64) |
+| Identity (`ISteamUser::GetSteamID`) | Direct 32-bit probe returned a logged-on, nonzero SteamID; x64 cannot reach the interface because initialization times out | P (win32); F (win64) |
+| Ownership/DRM | Direct 32-bit probe returned subscribed and subscribed-to-AppID; a DRM-wrapper title is not certified | P (win32 probe); pending (DRM wrapper) |
+| Achievements/stats | Direct 32-bit probe requested current stats and enumerated 21 Katamari achievements, including state for the first entry; no controlled unlock/store/relaunch test is complete | P (read-only); pending (write path) |
+| DLC | Direct 32-bit probe called DLC enumeration and returned count 0; no DLC-content launch has been completed | P (enumeration); pending (content) |
+| Overlay | Direct probe reported `IsOverlayEnabled=0` for Katamari; visible overlay attachment was observed with Geometry Wars, Peggle, and Sonic Mania renderer paths | P (title/renderer-specific) |
 | Playtime | Native Steam updates local playtime and App Running/App stopped transitions after bridge runs | P (client telemetry) |
-| Shutdown/relaunch | Clean `wine_exit=0` and signalled exits are recorded; repeat launch reaches the same boundary for the tested mappings | P (boundary) |
+| Steam Stop | Native Steam emitted `App Running,Terminating`; the bridge routed it through its signal trap, reaped the selected prefix, and returned Peggle and Katamari to Play with no Wine/helper processes remaining | P |
+| Shutdown/relaunch | Direct 32-bit probe reached `SteamAPI_Shutdown` and a clean bridge exit; signalled Peggle and Katamari runs also cleaned up and relaunch | P (win32/boundary); F (x64 probe) |
 
 The next feature tests should use one known-visible title for the controlled
 Steamworks probe and one Cloud title. The probe must record API-level results
 without modifying the game depot; a diagnostic executable or a separately
 staged Steamworks sample is preferable to instrumenting shipped game files.
+
+## Direct Steamworks probe
+
+`tools/ullage-steamworks-probe.c` is an optional MinGW-built diagnostic. It
+loads the matching `steam_api.dll` or `steam_api64.dll` beside the probe and
+uses the game's flat exports, so it does not replace the game's Steamworks
+library or alter the depot. `SteamAPI_Init` is bounded by a ten-second watchdog;
+exit 124 means the runtime is stuck in initialization rather than that the
+probe silently passed.
+
+Compile both architectures when the host has MinGW:
+
+~~~sh
+x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror -o /tmp/ullage-probe64.exe tools/ullage-steamworks-probe.c
+i686-w64-mingw32-gcc -O2 -Wall -Wextra -Werror -o /tmp/ullage-probe32.exe tools/ullage-steamworks-probe.c
+~~~
+
+On the current Katamari depot, the 32-bit probe returned `SteamAPI_Init`, a
+logged-on identity, matching AppID, subscription/ownership, DLC count,
+achievement enumeration, and `SteamAPI_Shutdown`. The 64-bit probe loaded the
+actual Unity plugin DLL and confirmed Steam was running, then timed out after
+`lsteamclient.CreateInterface` entered the native x64 initialization path. An
+older Unix lsteamclient build reproduced the same timeout. A prior custom
+forwarder/host experiment is excluded from this acceptance result because it
+was not the untouched Ullage bridge path.
+
+## Stop and cleanup boundary
+
+The native macOS client tracks the external launcher and its Wine descendants,
+but its Stop action does not signal the generated shell launcher in this
+configuration. Ullage therefore watches only new lines in native Steam's
+`logs/content_log.txt` for the active AppID's `Terminating` state. It then sends
+`TERM` through the ordinary bridge supervisor, waits for the exact Wine child,
+and runs the existing prefix-scoped reaper. This is a small Steam-specific
+adapter at the boundary, not UI injection or a global process-name kill.
+
+The behavior was exercised through the native Play/Stop UI with Peggle and
+Katamari: both exited with `wine_exit=143 signal_received=1`, Steam returned to
+the normal Play state, and process inspection found no game, Wine server, or
+prefix-owned helper left behind.
 
 ## Cloud interpretation
 
@@ -84,12 +127,15 @@ The Valve Proton manifest declares `from_oslist=windows` and
 `to_oslist=linux`; see the [Proton compatibility-tool template](https://github.com/ValveSoftware/Proton/blob/proton_11.0/compatibilitytool.vdf.template).
 
 Local appinfo inspection shows that `config/launch/*/config/oslist` filters
-launch entries (for example, Windows and macOS alternatives in INSIDE), but it
-does not document or demonstrate a per-AppID depot-platform override. The
-current host still uses the global `@sSteamCmdForcePlatformType windows`
-setting to obtain Windows content. Ullage must not silently replace that with
-an appinfo launch-entry edit until a clean install experiment proves that the
-content manifest, depot set, and verification state all remain Windows-only.
+launch entries (for example, Windows and macOS alternatives in INSIDE), while
+the AppID record separately describes depot `config/oslist` values. The
+current parser intentionally edits only the launch executable and leaves those
+depot records untouched; no per-AppID depot-platform override was found or
+demonstrated. The current host still uses the global
+`@sSteamCmdForcePlatformType windows` setting to obtain Windows content. Ullage
+must not silently replace that with an appinfo launch-entry edit until a clean
+install experiment proves that the content manifest, depot set, and
+verification state all remain Windows-only.
 
 ## Evidence paths
 

@@ -78,6 +78,9 @@ runtime provenance.
   credentials.
 * bin/ullage-fd-exec — universal descriptor-boundary helper, built from
   src/ullage-fd-exec.c.
+* tools/ullage-steamworks-probe.c — optional MinGW diagnostic for direct
+  SteamAPI initialization, identity, ownership, stats, DLC, overlay, and
+  shutdown checks without modifying a shipped depot.
 * runtime/README.md — runtime and lsteamclient contract. The large third-party
   binaries are supplied by the host rather than committed here.
 
@@ -146,6 +149,14 @@ to become idle before reaping prefix-owned helper processes. This keeps a slow
 game startup from being killed by an early `wineserver -w` return and gives
 Steam one supervised launch boundary even when Wine's `start.exe` launcher
 outlives the Windows process.
+
+The macOS client currently records an external launcher and enters `Stopping`
+without signalling that launcher. By default the bridge watches the native
+Steam `logs/content_log.txt` from its launch-time offset for the exact AppID's
+`Terminating` state, then routes that request through the same signal and
+prefix-scoped cleanup path. This keeps the ordinary Steam Stop button useful
+without injecting into Steam's UI; `STEAM_STOP_WATCH=0` disables the adapter for
+diagnostics only.
 
 ## Check or repair a mapping
 
@@ -261,15 +272,17 @@ To restore the native launch entry, quit Steam and run:
 * Steam virtual-gamepad metadata, including Proton's
   `SteamVirtualGamepadInfo_Proton` fallback.
 * Native Steam's process add/update/remove lifecycle.
+* Native Steam's Stop action through the AppID-scoped termination watcher.
 * The original Windows depot files and their verification surface.
 * A bounded, prefix-scoped cleanup path for Wine infrastructure processes.
 
 ## Current boundary
 
 The launch architecture is proven across both 32-bit legacy and 64-bit Unity
-Windows titles in the local experiment, including visible rendering and native
-overlay attachment on some renderer paths. That is evidence for the boundary,
-not a universal compatibility claim.
+Windows titles in the local experiment, including native Steam Stop cleanup on
+Peggle and Katamari. Visible rendering and native overlay attachment are proven
+on some renderer paths. That is evidence for the boundary, not a universal
+compatibility claim.
 
 Steam Cloud root resolution is proven for four Windows-only titles, and a
 reversible changed-file upload round trip is proven through the native path for
@@ -279,6 +292,11 @@ conflict policy, and all Unity/D3DMetal window paths still need per-title
 acceptance tests. The bridge records Steamworks transport and lifecycle
 evidence, but it does not claim that every game renderer, DRM scheme, or cloud
 implementation works.
+
+The optional direct Steamworks probe passes initialization, identity,
+ownership, stats, DLC enumeration, and shutdown for Katamari's 32-bit API DLL;
+the shipped 64-bit API DLL still times out inside the current lsteamclient
+initialization path. That x64 defect remains an explicit acceptance boundary.
 
 The next work belongs above this small core: runtime discovery, renderer
 profiles, cloud verification, arm64-native Wine, and recovery when Steam
