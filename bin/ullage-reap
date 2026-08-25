@@ -1,0 +1,134 @@
+#!/bin/sh
+# Stop a Wine prefix and reap only Wine helper processes that still hold it.
+set -u
+
+PREFIX=
+WINESERVER=
+
+usage() {
+    cat >&2 <<'EOF'
+Usage: ullage-reap --prefix PATH --wineserver PATH
+
+The reaper is deliberately prefix-scoped. It never uses a global process-name
+kill, so another Wine prefix or the native Steam client is left alone.
+EOF
+}
+
+die() {
+    printf 'ullage-reap: %s\n' "$*" >&2
+    exit 2
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --prefix)
+            [ "$#" -ge 2 ] || die "--prefix requires a path"
+            PREFIX=$2
+            shift 2
+            ;;
+        --wineserver)
+            [ "$#" -ge 2 ] || die "--wineserver requires a path"
+            WINESERVER=$2
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            die "unknown option: $1"
+            ;;
+    esac
+done
+
+[ -n "$PREFIX" ] || die "missing --prefix"
+[ -n "$WINESERVER" ] || die "missing --wineserver"
+[ -d "$PREFIX" ] || die "prefix does not exist: $PREFIX"
+[ -x "$WINESERVER" ] || die "wineserver is missing or not executable: $WINESERVER"
+
+LSOF=/usr/sbin/lsof
+PS=/bin/ps
+SLEEP=/bin/sleep
+
+# These are Wine infrastructure processes, not game executables. The lsof
+# prefix check below is the actual scope guard.
+is_helper_name() {
+    case "$1" in
+        winedevice.exe|wineboot.exe|services.exe|plugplay.exe|svchost.exe|\
+        rpcss.exe|conhost.exe|start.exe|explorer.exe|tabtip.exe|\
+        steamservice.exe|winewrapper|wine-preloader|wine64-preloader)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+owns_prefix() {
+    [ -x "$LSOF" ] || return 1
+    "$LSOF" -a -p "$1" -Fn 2>/dev/null |
+        /usr/bin/grep -F -q -- "$PREFIX"
+}
+
+is_live_helper() {
+    process_id=$1
+    process_command=$($PS -p "$process_id" -o command= -ww 2>/dev/null | /usr/bin/sed 's/^ *//')
+    process_name=${process_command##*/}
+    process_name=${process_name##*\\}
+    process_name=${process_name%% *}
+    [ -n "$process_name" ] || return 1
+    is_helper_name "$process_name" || return 1
+    owns_prefix "$process_id"
+}
+
+list_helpers() {
+    [ -x "$LSOF" ] || return 0
+    while IFS=' ' read -r process_id process_command; do
+        [ -n "$process_id" ] || continue
+        process_name=${process_command##*/}
+        process_name=${process_name##*\\}
+        process_name=${process_name%% *}
+        is_helper_name "$process_name" || continue
+        owns_prefix "$process_id" || continue
+        printf '%s\n' "$process_id"
+    done <<EOF
+$($PS -axo pid=,command= -ww 2>/dev/null)
+EOF
+}
+
+stop_wineserver() {
+    # Some Wine builds block when no server is live. Run the control command
+    # separately with a short bound so cleanup can never hold Steam's Play
+    # process open indefinitely.
+    WINEPREFIX="$PREFIX" "$WINESERVER" -k >/dev/null 2>&1 &
+    control_pid=$!
+    tick=0
+    while kill -0 "$control_pid" 2>/dev/null; do
+        if [ "$tick" -ge 20 ]; then
+            kill -TERM "$control_pid" 2>/dev/null || true
+            break
+        fi
+        "$SLEEP" 0.1
+        tick=$((tick + 1))
+    done
+    wait "$control_pid" 2>/dev/null || true
+}
+
+helper_pids=$(list_helpers)
+stop_wineserver
+
+if [ -n "$helper_pids" ]; then
+    for process_id in $helper_pids; do
+        is_live_helper "$process_id" || continue
+        kill -TERM "$process_id" 2>/dev/null || true
+    done
+    "$SLEEP" 0.5
+    for process_id in $helper_pids; do
+        is_live_helper "$process_id" || continue
+        kill -KILL "$process_id" 2>/dev/null || true
+    done
+    printf 'reaped_helper_pids=%s\n' "$(printf '%s' "$helper_pids" | tr '\n' ' ')"
+else
+    printf '%s\n' 'reaped_helper_pids=none'
+fi

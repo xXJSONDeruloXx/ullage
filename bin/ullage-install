@@ -1,0 +1,293 @@
+#!/bin/sh
+# Map Steam's native Play action to an external Ullage Wine launcher.
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+BRIDGE_HOME=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
+BRIDGE="$SCRIPT_DIR/ullage-bridge"
+APPINFO_TOOL="$SCRIPT_DIR/ullage-appinfo.py"
+HOME_VALUE=${HOME:-/tmp}
+
+die() {
+    printf 'ullage-install: %s\n' "$*" >&2
+    exit 2
+}
+
+shell_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+usage() {
+    cat >&2 <<'EOF'
+Usage:
+  ullage-install --appid ID --target PATH [options]
+
+Options:
+  --game-dir PATH             working directory (default: target directory)
+  --prefix PATH               Wine prefix
+  --arch auto|win32|win64     PE architecture (default: auto)
+  --steam-root PATH           native Steam library root
+  --wine-root PATH            Wine installation root
+  --gptk-root PATH            Game Porting Toolkit runtime root
+  --bridge-root PATH          lsteamclient artifact root
+  --log PATH                  append Wine output here
+  --wine-debug VALUE          WINEDEBUG value (default: -all)
+  --winemsync VALUE           WINEMSYNC value (default: 1)
+  --legacy-steam              require staged 32-bit Steam DLLs
+  --preserve-steam-transport  retain Steam's launch dylibs and IPC descriptors (default)
+  --clean-steam-transport     close inherited Steam descriptors and skip overlay injection
+  --force                     replace an existing external mapping
+  --help
+
+Steam must be fully quit while this command edits appcache/appinfo.vdf. The
+genuine Windows executable is never moved or overwritten.
+EOF
+}
+
+APP_ID=
+TARGET=
+GAME_DIR=
+PREFIX=
+ARCH=auto
+STEAM_ROOT="${STEAM_ROOT:-$HOME_VALUE/Library/Application Support/Steam}"
+WINE_ROOT="${WINE_ROOT:-}"
+GPTK_ROOT="${GPTK_ROOT:-}"
+BRIDGE_ROOT="${BRIDGE_ROOT:-$BRIDGE_HOME/runtime/lsteamclient}"
+LOG_FILE=
+WINE_DEBUG_VALUE=${WINEDEBUG:--all}
+WINEMSYNC_VALUE=${WINEMSYNC:-1}
+LEGACY_STEAM=0
+PRESERVE_STEAM_TRANSPORT=1
+FORCE=0
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --appid) [ "$#" -ge 2 ] || die "--appid requires a value"; APP_ID=$2; shift 2 ;;
+        --target) [ "$#" -ge 2 ] || die "--target requires a path"; TARGET=$2; shift 2 ;;
+        --game-dir) [ "$#" -ge 2 ] || die "--game-dir requires a path"; GAME_DIR=$2; shift 2 ;;
+        --prefix) [ "$#" -ge 2 ] || die "--prefix requires a path"; PREFIX=$2; shift 2 ;;
+        --arch) [ "$#" -ge 2 ] || die "--arch requires a value"; ARCH=$2; shift 2 ;;
+        --steam-root) [ "$#" -ge 2 ] || die "--steam-root requires a path"; STEAM_ROOT=$2; shift 2 ;;
+        --wine-root) [ "$#" -ge 2 ] || die "--wine-root requires a path"; WINE_ROOT=$2; shift 2 ;;
+        --gptk-root) [ "$#" -ge 2 ] || die "--gptk-root requires a path"; GPTK_ROOT=$2; shift 2 ;;
+        --bridge-root) [ "$#" -ge 2 ] || die "--bridge-root requires a path"; BRIDGE_ROOT=$2; shift 2 ;;
+        --log) [ "$#" -ge 2 ] || die "--log requires a path"; LOG_FILE=$2; shift 2 ;;
+        --wine-debug) [ "$#" -ge 2 ] || die "--wine-debug requires a value"; WINE_DEBUG_VALUE=$2; shift 2 ;;
+        --winemsync) [ "$#" -ge 2 ] || die "--winemsync requires a value"; WINEMSYNC_VALUE=$2; shift 2 ;;
+        --legacy-steam) LEGACY_STEAM=1; shift ;;
+        --no-legacy-steam) LEGACY_STEAM=0; shift ;;
+        --preserve-steam-transport) PRESERVE_STEAM_TRANSPORT=1; shift ;;
+        --clean-steam-transport) PRESERVE_STEAM_TRANSPORT=0; shift ;;
+        --force) FORCE=1; shift ;;
+        --help|-h) usage; exit 0 ;;
+        *) die "unknown option: $1" ;;
+    esac
+done
+
+[ -n "$APP_ID" ] || die "missing --appid"
+[ -n "$TARGET" ] || die "missing --target"
+case "$APP_ID" in *[!0-9]*|'') die "AppID must be numeric: $APP_ID" ;; esac
+[ -x "$BRIDGE" ] || die "bridge is missing or not executable: $BRIDGE"
+[ -x "$SCRIPT_DIR/ullage-fd-exec" ] || die "fd helper is missing or not executable: $SCRIPT_DIR/ullage-fd-exec"
+[ -x "$APPINFO_TOOL" ] || die "appinfo editor is missing or not executable: $APPINFO_TOOL"
+PYTHON3_VALUE=${PYTHON3:-python3}
+PYTHON3_BIN=$(command -v "$PYTHON3_VALUE" 2>/dev/null || true)
+[ -n "$PYTHON3_BIN" ] || die "python3 is required (set PYTHON3 to override)"
+[ -n "$WINE_ROOT" ] || die "set --wine-root or WINE_ROOT"
+[ -n "$GPTK_ROOT" ] || die "set --gptk-root or GPTK_ROOT"
+
+STEAM_PIDS=$(/usr/bin/pgrep -x steam_osx 2>/dev/null || true)
+[ -z "$STEAM_PIDS" ] || die "quit native Steam before editing appcache (PIDs: $STEAM_PIDS)"
+
+case "$TARGET" in
+    /*) ;;
+    *) TARGET=$(CDPATH= cd "$(dirname "$TARGET")" && pwd)/$(basename "$TARGET") ;;
+esac
+[ -f "$TARGET" ] || die "target is not a regular file: $TARGET"
+[ ! -L "$TARGET" ] || die "target must not be a symlink: $TARGET"
+case "$TARGET" in *.exe) ;; *) die "target does not look like an executable: $TARGET" ;; esac
+
+if [ -z "$GAME_DIR" ]; then
+    GAME_DIR=$(CDPATH= cd "$(dirname "$TARGET")" && pwd)
+else
+    case "$GAME_DIR" in
+        /*) ;;
+        *) GAME_DIR=$(CDPATH= cd "$GAME_DIR" && pwd) ;;
+    esac
+fi
+[ -d "$GAME_DIR" ] || die "game directory does not exist: $GAME_DIR"
+
+FILE_INFO=$(/usr/bin/file -b "$TARGET")
+case "$FILE_INFO" in
+    *'PE32 executable'*|*'PE32+'*) ;;
+    *) die "target is not a Windows PE executable: $FILE_INFO" ;;
+esac
+if [ "$ARCH" = auto ]; then
+    case "$FILE_INFO" in
+        *'PE32+'*) ARCH=win64 ;;
+        *'PE32 executable'*) ARCH=win32 ;;
+    esac
+fi
+case "$ARCH" in win32|win64) ;; *) die "invalid --arch: $ARCH" ;; esac
+case "$PRESERVE_STEAM_TRANSPORT" in 0|1) ;; *) die "invalid transport mode" ;; esac
+
+WINE_BIN="$WINE_ROOT/bin/wine"
+WINESERVER="$WINE_ROOT/bin/wineserver"
+STEAM_CLIENT_DYLIB="$STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib"
+[ -x "$WINE_BIN" ] || die "Wine executable is missing or not executable: $WINE_BIN"
+[ -x "$WINESERVER" ] || die "wineserver is missing or not executable: $WINESERVER"
+[ -f "$GPTK_ROOT/external/libd3dshared.dylib" ] ||
+    die "GPTK shared library is missing: $GPTK_ROOT/external/libd3dshared.dylib"
+[ -f "$STEAM_CLIENT_DYLIB" ] || die "native Steam client is missing: $STEAM_CLIENT_DYLIB"
+[ -f "$BRIDGE_ROOT/x86_64-unix/lsteamclient.so" ] ||
+    die "host lsteamclient is missing under: $BRIDGE_ROOT"
+if [ "$ARCH" = win64 ]; then
+    [ -f "$BRIDGE_ROOT/x86_64-windows/lsteamclient.dll" ] ||
+        die "64-bit Windows lsteamclient is missing under: $BRIDGE_ROOT"
+else
+    [ -f "$BRIDGE_ROOT/i386-windows/lsteamclient.dll" ] ||
+        die "32-bit Windows lsteamclient is missing under: $BRIDGE_ROOT"
+fi
+
+if [ -z "$PREFIX" ]; then
+    PREFIX="${WINEPREFIX:-$BRIDGE_HOME/compatdata/$APP_ID/pfx}"
+fi
+[ -d "$PREFIX" ] || die "Wine prefix does not exist: $PREFIX"
+[ -f "$PREFIX/system.reg" ] || die "Wine prefix is not initialized: $PREFIX"
+if [ "$LEGACY_STEAM" = 1 ]; then
+    LEGACY_STEAM_DIR="$PREFIX/drive_c/Program Files (x86)/Steam"
+    for legacy_file in steam.dll steamclient.dll tier0_s.dll vstdlib_s.dll; do
+        [ -f "$LEGACY_STEAM_DIR/$legacy_file" ] ||
+            die "legacy Steam DLL is missing: $LEGACY_STEAM_DIR/$legacy_file"
+    done
+fi
+if [ -z "$LOG_FILE" ]; then
+    LOG_FILE="$BRIDGE_HOME/logs/$APP_ID.log"
+fi
+
+APPINFO="$STEAM_ROOT/appcache/appinfo.vdf"
+[ -f "$APPINFO" ] || die "Steam appinfo cache is missing: $APPINFO"
+CONFIG_DIR="$BRIDGE_HOME/config/games"
+CONFIG_FILE="$CONFIG_DIR/$APP_ID.conf"
+STATE_FILE="$CONFIG_DIR/$APP_ID.launch.json"
+LAUNCHER_DIR="$BRIDGE_HOME/launchers"
+LAUNCHER="$LAUNCHER_DIR/$APP_ID.sh"
+TARGET_NAME=$(basename "$TARGET")
+LAUNCH_REL=$("$PYTHON3_BIN" - "$GAME_DIR" "$LAUNCHER" <<'PY'
+import os
+import sys
+print(os.path.relpath(sys.argv[2], sys.argv[1]))
+PY
+)
+
+for existing_file in "$CONFIG_FILE" "$STATE_FILE" "$LAUNCHER"; do
+    if [ -e "$existing_file" ] && [ "$FORCE" -ne 1 ]; then
+        die "generated file exists (use --force): $existing_file"
+    fi
+done
+
+mkdir -p "$CONFIG_DIR" "$LAUNCHER_DIR" "$BRIDGE_HOME/backups/appinfo"
+umask 077
+STAMP=$(/bin/date +%Y%m%d-%H%M%S).$$
+APPINFO_BACKUP="$BRIDGE_HOME/backups/appinfo/$APP_ID-$STAMP.vdf"
+APPINFO_TMP="$APPINFO.tmp.$$"
+CONFIG_TMP="$CONFIG_FILE.tmp.$$"
+LAUNCHER_TMP="$LAUNCHER.tmp.$$"
+STATE_TMP="$STATE_FILE.tmp.$$"
+CONFIG_BACKUP=
+LAUNCHER_BACKUP=
+STATE_BACKUP=
+APPINFO_INSTALLED=0
+
+remove_file() {
+    if [ -e "$1" ] || [ -L "$1" ]; then
+        unlink "$1"
+    fi
+}
+
+rollback() {
+    code=$?
+    trap - EXIT HUP INT TERM
+    remove_file "$CONFIG_TMP"
+    remove_file "$LAUNCHER_TMP"
+    remove_file "$STATE_TMP"
+    remove_file "$APPINFO_TMP"
+    if [ "$APPINFO_INSTALLED" -eq 1 ] && [ -f "$APPINFO_BACKUP" ]; then
+        cp -p "$APPINFO_BACKUP" "$APPINFO"
+    fi
+    if [ -n "$CONFIG_BACKUP" ] && [ ! -e "$CONFIG_FILE" ]; then mv "$CONFIG_BACKUP" "$CONFIG_FILE"; fi
+    if [ -n "$LAUNCHER_BACKUP" ] && [ ! -e "$LAUNCHER" ]; then mv "$LAUNCHER_BACKUP" "$LAUNCHER"; fi
+    if [ -n "$STATE_BACKUP" ] && [ ! -e "$STATE_FILE" ]; then mv "$STATE_BACKUP" "$STATE_FILE"; fi
+    exit "$code"
+}
+trap rollback EXIT HUP INT TERM
+
+cp -p "$APPINFO" "$APPINFO_BACKUP"
+cp -p "$APPINFO" "$APPINFO_TMP"
+
+if [ -f "$STATE_FILE" ]; then
+    "$PYTHON3_BIN" "$APPINFO_TOOL" restore --appinfo "$APPINFO_TMP" --state "$STATE_FILE" ||
+        die "existing launch mapping cannot be restored; remove it or use a matching appcache"
+fi
+
+{
+    printf 'APP_ID=%s\n' "$(shell_quote "$APP_ID")"
+    printf 'GAME_EXE=%s\n' "$(shell_quote "$TARGET")"
+    printf 'GAME_DIR=%s\n' "$(shell_quote "$GAME_DIR")"
+    printf 'PREFIX=%s\n' "$(shell_quote "$PREFIX")"
+    printf 'ARCH=%s\n' "$(shell_quote "$ARCH")"
+    printf 'STEAM_ROOT=%s\n' "$(shell_quote "$STEAM_ROOT")"
+    printf 'WINE_ROOT=%s\n' "$(shell_quote "$WINE_ROOT")"
+    printf 'GPTK_ROOT=%s\n' "$(shell_quote "$GPTK_ROOT")"
+    printf 'BRIDGE_ROOT=%s\n' "$(shell_quote "$BRIDGE_ROOT")"
+    printf 'FD_EXEC=%s\n' "$(shell_quote "$SCRIPT_DIR/ullage-fd-exec")"
+    printf 'LOG_FILE=%s\n' "$(shell_quote "$LOG_FILE")"
+    printf 'LEGACY_STEAM=%s\n' "$(shell_quote "$LEGACY_STEAM")"
+    printf 'PRESERVE_STEAM_TRANSPORT=%s\n' "$(shell_quote "$PRESERVE_STEAM_TRANSPORT")"
+    printf 'WINE_DEBUG_VALUE=%s\n' "$(shell_quote "$WINE_DEBUG_VALUE")"
+    printf 'WINEMSYNC_VALUE=%s\n' "$(shell_quote "$WINEMSYNC_VALUE")"
+} >"$CONFIG_TMP"
+
+{
+    printf '#!/bin/sh\n'
+    printf '# ullage external launcher v1\n'
+    printf 'set -eu\n'
+    printf 'exec %s --config %s -- "$@"\n' \
+        "$(shell_quote "$BRIDGE")" "$(shell_quote "$CONFIG_FILE")"
+} >"$LAUNCHER_TMP"
+chmod 755 "$LAUNCHER_TMP"
+
+"$PYTHON3_BIN" "$APPINFO_TOOL" patch \
+    --appinfo "$APPINFO_TMP" \
+    --appid "$APP_ID" \
+    --match "$TARGET_NAME" \
+    --replace "$LAUNCH_REL" \
+    --state-out "$STATE_TMP"
+mv "$APPINFO_TMP" "$APPINFO"
+APPINFO_INSTALLED=1
+
+if [ -e "$CONFIG_FILE" ]; then
+    CONFIG_BACKUP="$CONFIG_FILE.backup.$STAMP"
+    mv "$CONFIG_FILE" "$CONFIG_BACKUP"
+fi
+if [ -e "$LAUNCHER" ]; then
+    LAUNCHER_BACKUP="$LAUNCHER.backup.$STAMP"
+    mv "$LAUNCHER" "$LAUNCHER_BACKUP"
+fi
+if [ -e "$STATE_FILE" ]; then
+    STATE_BACKUP="$STATE_FILE.backup.$STAMP"
+    mv "$STATE_FILE" "$STATE_BACKUP"
+fi
+mv "$CONFIG_TMP" "$CONFIG_FILE"
+mv "$LAUNCHER_TMP" "$LAUNCHER"
+mv "$STATE_TMP" "$STATE_FILE"
+trap - EXIT HUP INT TERM
+
+printf 'installed AppID %s\n' "$APP_ID"
+printf 'target=%s\n' "$TARGET"
+printf 'launcher=%s\n' "$LAUNCHER"
+printf 'steam_executable=%s\n' "$LAUNCH_REL"
+printf 'config=%s\n' "$CONFIG_FILE"
+printf 'state=%s\n' "$STATE_FILE"
+printf 'appinfo_backup=%s\n' "$APPINFO_BACKUP"
+printf '%s\n' 'Restart native Steam before pressing Play.'

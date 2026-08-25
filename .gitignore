@@ -1,0 +1,10 @@
+backups/
+compatdata/
+config/
+launchers/
+logs/
+runtime/lsteamclient/
+bin/ullage-fd-exec
+bin/__pycache__/
+tests/__pycache__/
+.DS_Store
