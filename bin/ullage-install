@@ -34,6 +34,7 @@ Options:
   --arch auto|win32|win64     PE architecture (default: auto)
   --steam-root PATH           native Steam library root
   --wine-root PATH            Wine installation root
+  --wine-dllpath PATHS        optional colon-separated Wine DLL search path
   --gptk-root PATH            Game Porting Toolkit runtime root
   --bridge-root PATH          lsteamclient artifact root
   --log PATH                  append Wine output here
@@ -68,6 +69,7 @@ PREFIX=
 ARCH=auto
 STEAM_ROOT="${STEAM_ROOT:-$HOME_VALUE/Library/Application Support/Steam}"
 WINE_ROOT="${WINE_ROOT:-}"
+WINE_DLLPATH_VALUE="${WINE_DLLPATH:-}"
 GPTK_ROOT="${GPTK_ROOT:-}"
 BRIDGE_ROOT="${BRIDGE_ROOT:-$BRIDGE_HOME/runtime/lsteamclient}"
 LOG_FILE=
@@ -98,6 +100,7 @@ while [ "$#" -gt 0 ]; do
         --arch) [ "$#" -ge 2 ] || die "--arch requires a value"; ARCH=$2; shift 2 ;;
         --steam-root) [ "$#" -ge 2 ] || die "--steam-root requires a path"; STEAM_ROOT=$2; shift 2 ;;
         --wine-root) [ "$#" -ge 2 ] || die "--wine-root requires a path"; WINE_ROOT=$2; shift 2 ;;
+        --wine-dllpath) [ "$#" -ge 2 ] || die "--wine-dllpath requires a value"; WINE_DLLPATH_VALUE=$2; shift 2 ;;
         --gptk-root) [ "$#" -ge 2 ] || die "--gptk-root requires a path"; GPTK_ROOT=$2; shift 2 ;;
         --bridge-root) [ "$#" -ge 2 ] || die "--bridge-root requires a path"; BRIDGE_ROOT=$2; shift 2 ;;
         --log) [ "$#" -ge 2 ] || die "--log requires a path"; LOG_FILE=$2; shift 2 ;;
@@ -311,6 +314,7 @@ fi
     printf 'ARCH=%s\n' "$(shell_quote "$ARCH")"
     printf 'STEAM_ROOT=%s\n' "$(shell_quote "$STEAM_ROOT")"
     printf 'WINE_ROOT=%s\n' "$(shell_quote "$WINE_ROOT")"
+    printf 'WINEDLLPATH_VALUE=%s\n' "$(shell_quote "$WINE_DLLPATH_VALUE")"
     printf 'GPTK_ROOT=%s\n' "$(shell_quote "$GPTK_ROOT")"
     printf 'BRIDGE_ROOT=%s\n' "$(shell_quote "$BRIDGE_ROOT")"
     printf 'FD_EXEC=%s\n' "$(shell_quote "$SCRIPT_DIR/ullage-fd-exec")"

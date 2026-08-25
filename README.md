@@ -127,6 +127,9 @@ STEAM_ROOT="$HOME/Library/Application Support/Steam"
 ~~~
 
 Add --arch win32 or --arch win64 when automatic PE detection is not enough.
+Use --wine-dllpath with a colon-separated path when an alternate Wine/D3D
+runtime must take precedence over the default GPTK DLL directories; leaving it
+unset preserves the standard runtime ordering.
 Add --legacy-steam only for older titles whose prepared prefix contains the
 legacy Steam DLL set. Transport preservation is the default; use
 --clean-steam-transport only as a title-specific fallback.
