@@ -68,6 +68,7 @@ DRY_RUN=0
 WINE_DEBUG_VALUE=${WINE_DEBUG_VALUE:--all}
 WINEMSYNC_VALUE=${WINEMSYNC_VALUE:-1}
 WINE_SESSION_WAIT=${WINE_SESSION_WAIT:-1}
+STEAM_STOP_WATCH=${STEAM_STOP_WATCH:-1}
 PRESERVE_STEAM_TRANSPORT=1
 CLOUD_SYNC_COMMAND=${CLOUD_SYNC_COMMAND:-}
 CLOUD_CDP=${CLOUD_CDP:-0}
@@ -383,6 +384,7 @@ fi
     printf '[ullage-bridge] host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf '[ullage-bridge] win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
     printf '[ullage-bridge] preserve_steam_transport=%s\n' "$PRESERVE_STEAM_TRANSPORT"
+    printf '[ullage-bridge] steam_stop_watch=%s\n' "$STEAM_STOP_WATCH"
     printf '[ullage-bridge] steam_virtual_gamepad_metadata=%s\n' "$STEAM_VIRTUAL_GAMEPAD_PRESENT"
     printf '[ullage-bridge] cloud_sync=%s\n' "${CLOUD_SYNC_COMMAND:+enabled}"
 } >>"$LOG_FILE" 2>&1
@@ -408,10 +410,61 @@ run_cloud_sync pre
 
 cd "$GAME_DIR"
 WINE_CHILD_PID=
+WINE_SERVER_WAIT_PID=
+STEAM_STOP_WATCH_PID=
 SIGNAL_RECEIVED=0
+
+stop_steam_stop_watch() {
+    if [ -n "${STEAM_STOP_WATCH_PID:-}" ]; then
+        kill -TERM "$STEAM_STOP_WATCH_PID" 2>/dev/null || true
+        wait "$STEAM_STOP_WATCH_PID" 2>/dev/null || true
+        STEAM_STOP_WATCH_PID=
+    fi
+}
+
+start_steam_stop_watch() {
+    [ "$STEAM_STOP_WATCH" = 1 ] || return 0
+
+    watch_child_pid=$1
+    watch_log=$2
+    watch_bridge_pid=$3
+    watch_offset=0
+    if [ -f "$watch_log" ]; then
+        watch_offset=$(wc -c <"$watch_log" | tr -d '[:space:]')
+    fi
+
+    (
+        while kill -0 "$watch_child_pid" 2>/dev/null; do
+            if [ -f "$watch_log" ]; then
+                watch_size=$(wc -c <"$watch_log" | tr -d '[:space:]')
+                case "$watch_size" in
+                    ''|*[!0-9]*) watch_size=$watch_offset ;;
+                esac
+                if [ "$watch_size" -lt "$watch_offset" ]; then
+                    watch_offset=0
+                fi
+                if [ "$watch_size" -gt "$watch_offset" ]; then
+                    if tail -c "+$((watch_offset + 1))" "$watch_log" 2>/dev/null |
+                        grep -F "AppID $APP_ID state changed :" |
+                        grep -F 'Terminating' >/dev/null
+                    then
+                        printf '[ullage-bridge] native Steam requested stop for appid=%s\n' \
+                            "$APP_ID" >>"$LOG_FILE"
+                        kill -TERM "$watch_bridge_pid" 2>/dev/null || true
+                        exit 0
+                    fi
+                    watch_offset=$watch_size
+                fi
+            fi
+            sleep 0.1
+        done
+    ) &
+    STEAM_STOP_WATCH_PID=$!
+}
 
 forward_signal() {
     SIGNAL_RECEIVED=1
+    stop_steam_stop_watch
     if [ -n "${WINE_CHILD_PID:-}" ]; then
         kill -TERM "$WINE_CHILD_PID" 2>/dev/null || true
     fi
@@ -434,14 +487,21 @@ wait_and_reap() {
         kill -0 "$WINE_CHILD_PID" 2>/dev/null || break
     done
     WINE_CHILD_PID=
+    stop_steam_stop_watch
 
-    if [ "$WINE_SESSION_WAIT" = 1 ]; then
+    if [ "$WINE_SESSION_WAIT" = 1 ] && [ "$SIGNAL_RECEIVED" = 0 ]; then
         # Some Wine builds leave start.exe or helper processes alive after the
         # Windows process exits. This drains that prefix-scoped session without
         # ever deciding that the game child is disposable.
         WINEPREFIX="$PREFIX" "$WINESERVER" -w >>"$LOG_FILE" 2>&1 &
         WINE_SERVER_WAIT_PID=$!
+        # TERM can arrive during the child wait, before the drain process
+        # exists. Do not turn that race into an unbounded post-signal wait.
+        if [ "$SIGNAL_RECEIVED" = 1 ]; then
+            kill -TERM "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
+        fi
         wait "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
+        WINE_SERVER_WAIT_PID=
     fi
 
     trap - HUP INT TERM
@@ -482,6 +542,7 @@ launch_clean() {
         "$WINE_BIN" "$GAME_EXE" "$@" >>"$LOG_FILE" 2>&1 &
     WINE_CHILD_PID=$!
     trap forward_signal HUP INT TERM
+    start_steam_stop_watch "$WINE_CHILD_PID" "$STEAM_ROOT/logs/content_log.txt" "$$"
     wait_and_reap
 }
 
@@ -524,6 +585,7 @@ launch_with_steam_transport() {
         "$WINE_BIN" "$GAME_EXE" "$@" >>"$LOG_FILE" 2>&1 &
     WINE_CHILD_PID=$!
     trap forward_signal HUP INT TERM
+    start_steam_stop_watch "$WINE_CHILD_PID" "$STEAM_ROOT/logs/content_log.txt" "$$"
     wait_and_reap
 }
 

@@ -33,12 +33,16 @@ write_script "$TEMP_ROOT/wine" \
     'mode=$(cat "$WINEPREFIX/wine-mode")' \
     'case "$mode" in' \
     '  slow-exit) /bin/sleep 1; exit 7 ;;' \
-    '  term) trap '\''printf "%s\n" term >>"$WINEPREFIX/wine-events"; exit 143'\'' TERM; while :; do /bin/sleep 1; done ;;' \
+    '  term|term-hang) trap '\''printf "%s\n" term >>"$WINEPREFIX/wine-events"; /bin/sleep 0.2; exit 143'\'' TERM; while :; do /bin/sleep 1; done ;;' \
     '  *) exit 0 ;;' \
     'esac'
 write_script "$TEMP_ROOT/wineserver" \
     '#!/bin/sh' \
     'printf "%s:%s\n" "${1:-}" "${WINEPREFIX:-unset}" >>"$WINEPREFIX/wineserver-events"' \
+    'if [ "${1:-}" = "-w" ] && [ "$(cat "$WINEPREFIX/wine-mode")" = "term-hang" ]; then' \
+    '  trap '\''printf "%s\\n" wineserver-term >>"$WINEPREFIX/wineserver-events"; exit 0'\'' TERM INT' \
+    '  while :; do /bin/sleep 1; done' \
+    'fi' \
     'exit 0'
 
 make_case() {
@@ -52,7 +56,8 @@ make_case() {
     steam_root=$case_root/Steam
     mkdir -p "$prefix" "$wine_root/bin" "$gptk_root/external" \
         "$bridge_root/x86_64-unix" "$bridge_root/i386-windows" \
-        "$steam_root/Steam.AppBundle/Steam/Contents/MacOS" "$case_root/game"
+        "$steam_root/Steam.AppBundle/Steam/Contents/MacOS" "$steam_root/logs" \
+        "$case_root/game"
     cp "$TEMP_ROOT/wine" "$wine_root/bin/wine"
     cp "$TEMP_ROOT/wineserver" "$wine_root/bin/wineserver"
     chmod 755 "$wine_root/bin/wine" "$wine_root/bin/wineserver"
@@ -62,6 +67,7 @@ make_case() {
     : >"$bridge_root/x86_64-unix/lsteamclient.so"
     : >"$bridge_root/i386-windows/lsteamclient.dll"
     : >"$steam_root/Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib"
+    : >"$steam_root/logs/content_log.txt"
     : >"$case_root/game/test.exe"
     config=$case_root/config
     log=$case_root/bridge.log
@@ -85,6 +91,7 @@ make_case() {
     CASE_CONFIG=$config
     CASE_LOG=$log
     CASE_PREFIX=$prefix
+    CASE_STEAM_LOG=$steam_root/logs/content_log.txt
 }
 
 make_case early-exit slow-exit
@@ -99,7 +106,7 @@ set -e
 grep -F 'wine_exit=7 signal_received=0' "$CASE_LOG" >/dev/null
 grep -F -- '-w:' "$CASE_PREFIX/wineserver-events" >/dev/null
 
-make_case signal term
+make_case signal term-hang
 set +e
 FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" &
 bridge_pid=$!
@@ -115,6 +122,27 @@ done
     exit 1
 }
 kill -TERM "$bridge_pid"
+ticks=0
+while [ "$ticks" -lt 100 ]; do
+    bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+    case "$bridge_state" in ''|Z*) break ;; esac
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+case "$bridge_state" in
+Z*|'') ;;
+*)
+    printf '%s\n' 'bridge stayed alive after TERM during session drain' >&2
+    ps -axo pid=,ppid=,stat=,command= | awk -v pid="$bridge_pid" '$1 == pid || $2 == pid {print}' >&2 || true
+    cat "$CASE_LOG" >&2 || true
+    cat "$CASE_PREFIX/wine-events" >&2 || true
+    cat "$CASE_PREFIX/wineserver-events" >&2 || true
+    kill -KILL "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+    ;;
+esac
 wait "$bridge_pid"
 status=$?
 set -e
@@ -125,4 +153,49 @@ set -e
 grep -F 'term' "$CASE_PREFIX/wine-events" >/dev/null
 grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
 
-printf '%s\n' 'bridge supervision races: ok'
+make_case steam-stop term
+set +e
+FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" &
+bridge_pid=$!
+ticks=0
+while [ ! -f "$CASE_PREFIX/wine-events" ] && [ "$ticks" -lt 40 ]; do
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+[ -f "$CASE_PREFIX/wine-events" ] || {
+    echo 'fake Wine did not start before Steam stop test' >&2
+    kill -TERM "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+}
+echo '[2026-08-25 00:00:00] AppID 42 state changed : Fully Installed,App Running,Terminating,' >>"$CASE_STEAM_LOG"
+ticks=0
+while [ "$ticks" -lt 100 ]; do
+    bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+    case "$bridge_state" in ''|Z*) break ;; esac
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+case "$bridge_state" in
+Z*|'') ;;
+*)
+    echo 'bridge ignored Steam Terminating state' >&2
+    cat "$CASE_LOG" >&2 || true
+    kill -KILL "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+    ;;
+esac
+wait "$bridge_pid"
+status=$?
+set -e
+[ "$status" -eq 143 ] || {
+    echo "expected Steam stop exit 143, got $status" >&2
+    exit 1
+}
+grep -F 'term' "$CASE_PREFIX/wine-events" >/dev/null
+grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
+grep -F 'native Steam requested stop for appid=42' "$CASE_LOG" >/dev/null
+
+echo 'bridge supervision and Steam stop: ok'
