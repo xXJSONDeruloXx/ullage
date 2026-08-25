@@ -358,6 +358,8 @@ if [ "$CLOUD_NATIVE" -eq 1 ]; then
         --native-base "$CLOUD_NATIVE_BASE" \
         --addpath-root "$CLOUD_NATIVE_ADDPATH_ROOT" \
         --platform "$CLOUD_NATIVE_PLATFORM" \
+        --steam-root "$STEAM_ROOT" \
+        --steam3-account-id "$CLOUD_STEAM3_ACCOUNT_ID" \
         --state-out "$CLOUD_STATE_TMP"
     CLOUD_NATIVE_APPLIED=1
 fi

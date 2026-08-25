@@ -2,6 +2,7 @@
 """Exercise native Cloud override and symlink ownership semantics."""
 
 import importlib.util
+import hashlib
 import tempfile
 from pathlib import Path
 
@@ -55,6 +56,23 @@ def sections():
     }
 
 
+def sonic_sections():
+    return {
+        "appinfo": {
+            "config": {"launch": {"0": {"executable": "Game.exe"}}},
+            "ufs": {
+                "savefiles": {
+                    "0": {
+                        "root": "WinAppDataLocal",
+                        "path": "",
+                        "pattern": "*.bin",
+                    }
+                }
+            },
+        }
+    }
+
+
 for version in (MODULE.APPINFO.APPINFO_28, MODULE.APPINFO.APPINFO_29):
     with tempfile.TemporaryDirectory() as directory:
         base = Path(directory)
@@ -98,5 +116,55 @@ for version in (MODULE.APPINFO.APPINFO_28, MODULE.APPINFO.APPINFO_29):
         assert "1" not in overrides
         assert overrides["0"]["os"] == "MacOS"
         assert not Path(entry["link"]).exists()
+
+
+for version in (MODULE.APPINFO.APPINFO_28, MODULE.APPINFO.APPINFO_29):
+    with tempfile.TemporaryDirectory() as directory:
+        base = Path(directory)
+        appinfo_file = base / "appinfo.vdf"
+        appinfo_file.write_bytes(APPINFO_TEST.make_appinfo(version, sections=sonic_sections()))
+        prefix = base / "prefix"
+        prefix.mkdir()
+        (prefix / "system.reg").write_text("", encoding="utf-8")
+        (prefix / "user.reg").write_text(
+            '"USERPROFILE"="C:\\\\users\\\\steamuser"\n', encoding="utf-8"
+        )
+        steam_root = base / "Steam"
+        remote = steam_root / "userdata" / "123" / "42" / "remote"
+        remote.mkdir(parents=True)
+        payload = b"native-cache-seed"
+        remote_file = remote / "SaveData.bin"
+        remote_file.write_bytes(payload)
+        cache = remote.parent / "remotecache.vdf"
+        cache.write_text(
+            '"42"\n'
+            "{\n"
+            '\t"ChangeNumber"\t"1"\n'
+            '\t"OSType"\t"0"\n'
+            '\t"SaveData.bin"\n'
+            "\t{\n"
+            f'\t\t"size"\t"{len(payload)}"\n'
+            f'\t\t"sha"\t"{hashlib.sha1(payload).hexdigest()}"\n'
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        state_file = base / "state.json"
+        state = MODULE.install(
+            appinfo_file,
+            42,
+            prefix,
+            "auto",
+            base / "Application Support",
+            "Ullage",
+            "Windows",
+            state_file,
+            steam_root,
+        )
+        seeded = prefix / "drive_c/users/steamuser/AppData/Local/SaveData.bin"
+        assert seeded.read_bytes() == payload
+        assert [Path(item).resolve() for item in state["seeded_files"]] == [
+            seeded.resolve()
+        ]
 
 print("native cloud overrides: ok")

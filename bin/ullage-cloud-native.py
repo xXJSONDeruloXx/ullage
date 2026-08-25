@@ -14,10 +14,14 @@ overwrite a later Steam metadata change.
 
 import argparse
 import copy
+import fnmatch
+import hashlib
 import importlib.util
 import json
 import os
 import re
+import shlex
+import shutil
 import sys
 from pathlib import Path
 
@@ -156,7 +160,180 @@ def _cloud_record(appinfo, appid):
         raise NativeCloudError(f"AppID {appid} is not present in appinfo.vdf") from exc
 
 
-def install(appinfo_filename, appid, prefix, user, native_base, addpath_root, platform, state_out):
+def _parse_vdf_dict(tokens, index=0):
+    """Parse the small quoted-dictionary subset used by remotecache.vdf."""
+    if index >= len(tokens) or tokens[index] != "{":
+        raise ValueError("VDF dictionary must start with an opening brace")
+    result = {}
+    index += 1
+    while index < len(tokens) and tokens[index] != "}":
+        key = tokens[index]
+        index += 1
+        if index >= len(tokens):
+            raise ValueError("truncated VDF dictionary")
+        if tokens[index] == "{":
+            value, index = _parse_vdf_dict(tokens, index)
+        else:
+            value = tokens[index]
+            index += 1
+        result[key] = value
+    if index >= len(tokens):
+        raise ValueError("unterminated VDF dictionary")
+    return result, index + 1
+
+
+def _read_vdf_dict(filename):
+    lexer = shlex.shlex(
+        Path(filename).read_text(encoding="utf-8", errors="replace"),
+        posix=True,
+        punctuation_chars="{}",
+    )
+    lexer.whitespace_split = True
+    tokens = list(lexer)
+    if len(tokens) < 2 or tokens[1] != "{":
+        raise ValueError("invalid VDF document")
+    result, index = _parse_vdf_dict(tokens, 1)
+    if index != len(tokens):
+        raise ValueError("unexpected data after VDF document")
+    return result
+
+
+def _glob_regex(value):
+    """Translate a slash-separated glob without letting * cross a segment."""
+    escaped = re.escape(value)
+    return escaped.replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
+
+
+def _expand_path_template(value):
+    return re.sub(r"\{[^{}]+\}", "*", str(value or "").strip("/"))
+
+
+def _savefile_matches(remote_name, rule):
+    """Return whether a remote-cache path belongs to an Auto-Cloud rule."""
+    path = _expand_path_template(rule.get("path", ""))
+    pattern = str(rule.get("pattern", "*"))
+    parent, separator, filename = remote_name.rpartition("/")
+    path_re = _glob_regex(path)
+    if rule.get("recursive"):
+        parent_re = rf"{path_re}(?:/.*)?" if path_re else r".*"
+        return bool(re.fullmatch(parent_re, parent)) and fnmatch.fnmatchcase(
+            filename, pattern
+        )
+    return bool(re.fullmatch(path_re, parent)) and fnmatch.fnmatchcase(
+        filename, pattern
+    )
+
+
+def _remote_cache_candidates(steam_root, appid, account_id):
+    userdata = Path(steam_root).expanduser() / "userdata"
+    if account_id:
+        paths = [userdata / str(account_id) / str(appid) / "remotecache.vdf"]
+    else:
+        paths = sorted(userdata.glob(f"*/{appid}/remotecache.vdf"))
+        if len(paths) != 1:
+            return []
+    return [path for path in paths if path.is_file()]
+
+
+def _safe_remote_file(remote_root, name):
+    source = (remote_root / Path(*str(name).split("/"))).resolve()
+    try:
+        source.relative_to(remote_root.resolve())
+    except ValueError:
+        return None
+    return source if source.is_file() else None
+
+
+def _sha1(filename):
+    digest = hashlib.sha1()
+    with Path(filename).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def seed_local_remote_cache(
+    steam_root, appid, prefix, wine_user, account_id, appinfo
+):
+    """Seed only missing prefix files from Steam's already-local remote cache.
+
+    This is a migration aid for stale ``remotecache.vdf`` root IDs.  It never
+    downloads from Steam, overwrites an existing prefix file, or changes the
+    remote cache; native Steam remains responsible for the actual sync.
+    """
+    if not steam_root:
+        return []
+    ufs = app_ufs(appinfo, appid)
+    savefiles = ufs.get("savefiles", {})
+    if not isinstance(savefiles, dict):
+        return []
+    rules = [
+        item
+        for item in savefiles.values()
+        if isinstance(item, dict) and item.get("root") in CLOUD_PATH.ROOTS
+    ]
+    if not rules:
+        return []
+
+    seeded = []
+    for cache_filename in _remote_cache_candidates(steam_root, appid, account_id):
+        try:
+            cache = _read_vdf_dict(cache_filename)
+        except (OSError, ValueError):
+            continue
+        remote_root = cache_filename.parent / "remote"
+        for remote_name, metadata in cache.items():
+            if not isinstance(metadata, dict) or remote_name in {
+                "ChangeNumber",
+                "OSType",
+            }:
+                continue
+            if not any(_savefile_matches(remote_name, rule) for rule in rules):
+                continue
+            source = _safe_remote_file(remote_root, remote_name)
+            if source is None:
+                continue
+            try:
+                expected_size = int(metadata.get("size", -1))
+            except (TypeError, ValueError):
+                continue
+            if expected_size >= 0 and source.stat().st_size != expected_size:
+                continue
+            expected_sha = str(metadata.get("sha", "")).lower()
+            if expected_sha and _sha1(source).lower() != expected_sha:
+                continue
+            root = next(
+                rule["root"]
+                for rule in rules
+                if _savefile_matches(remote_name, rule)
+            )
+            target = CLOUD_PATH.resolve(prefix, wine_user, root, remote_name)
+            if target.exists() or target.is_symlink():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(f".{target.name}.ullage-seed")
+            try:
+                shutil.copy2(source, temporary)
+                temporary.replace(target)
+            finally:
+                if temporary.exists():
+                    temporary.unlink()
+            seeded.append(str(target))
+    return seeded
+
+
+def install(
+    appinfo_filename,
+    appid,
+    prefix,
+    user,
+    native_base,
+    addpath_root,
+    platform,
+    state_out,
+    steam_root=None,
+    steam3_account_id="",
+):
     """Install overrides and symlinks, returning the recorded state."""
     appinfo_filename = Path(appinfo_filename).expanduser()
     prefix = Path(prefix).expanduser().resolve()
@@ -176,6 +353,7 @@ def install(appinfo_filename, appid, prefix, user, native_base, addpath_root, pl
 
     entries = []
     created_links = []
+    seeded_files = []
     original_data = bytes(appinfo.data)
     try:
         for root in roots:
@@ -220,6 +398,14 @@ def install(appinfo_filename, appid, prefix, user, native_base, addpath_root, pl
 
         appinfo.rewrite_record(appid)
         appinfo.write(appinfo_filename)
+        seeded_files = seed_local_remote_cache(
+            steam_root,
+            appid,
+            prefix,
+            wine_user,
+            steam3_account_id,
+            appinfo,
+        )
         state = {
             "version": 1,
             "appid": int(appid),
@@ -229,6 +415,7 @@ def install(appinfo_filename, appid, prefix, user, native_base, addpath_root, pl
             "prefix": str(prefix),
             "user": wine_user,
             "entries": entries,
+            "seeded_files": seeded_files,
         }
         _write_json(state_out, state)
         return state
@@ -295,6 +482,8 @@ def main():
     )
     install_parser.add_argument("--addpath-root", default="Ullage")
     install_parser.add_argument("--platform", default="Windows")
+    install_parser.add_argument("--steam-root")
+    install_parser.add_argument("--steam3-account-id", default="")
     install_parser.add_argument("--state-out", required=True)
 
     restore_parser = subparsers.add_parser("restore")
@@ -313,10 +502,13 @@ def main():
                 args.addpath_root,
                 args.platform,
                 args.state_out,
+                args.steam_root,
+                args.steam3_account_id,
             )
             print(f"appid={state['appid']}")
             print(f"user={state['user']}")
             print("roots=" + ",".join(entry["root"] for entry in state["entries"]))
+            print(f"seeded_files={len(state.get('seeded_files', []))}")
         else:
             state = restore(args.appinfo, args.state)
             print(f"restored AppID {state['appid']}")

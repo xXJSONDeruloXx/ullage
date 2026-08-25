@@ -167,6 +167,13 @@ rewrite its local appinfo cache during a metadata refresh, so the install
 operation is intentionally repeatable rather than pretending this is a server
 metadata change.
 
+If Steam already has a file in its local `userdata/<account>/<appid>/remote`
+cache but the prefix is missing it, install performs a one-time size/SHA-1
+verified local seed when the file matches the current UFS rule. This handles
+stale local root IDs without opening a browser or making a network request; it
+never overwrites an existing prefix file. Native Steam owns all subsequent
+Cloud transfer and conflict behavior.
+
 This native path is the normal mode and should not be paired with the optional
 CDP lifecycle hook. When native Cloud is active, no browser page or per-file
 fallback downloader is involved in Play, launch, or exit synchronization.
@@ -187,7 +194,8 @@ The badge is now part of the native path rather than a UI fiction. Once the
 override points at the prefix, Steam's own Auto-Cloud resolver updates
 `remotecache.vdf` and the normal macOS client displays the ordinary current
 Cloud state. This is proven locally for Katamari Damacy REROLL (2 files),
-JellyCar Worlds (22 files), and RACCOIN (12 files). It is not yet a universal
+JellyCar Worlds (22 files), RACCOIN (12 files), and Sonic Mania's mixed-root
+configuration after its one-time local-cache seed. It is not yet a universal
 claim: titles with different UFS roots, path transforms, or a Steam metadata
 refresh still need acceptance testing.
 
