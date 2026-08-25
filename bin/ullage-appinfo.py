@@ -215,7 +215,8 @@ class AppInfo:
                 current = item.get("executable") if isinstance(item, dict) else None
                 if not isinstance(current, str):
                     continue
-                if match is None or os.path.basename(current).lower() == match.lower():
+                current_name = current.replace("\\", "/").rsplit("/", 1)[-1]
+                if match is None or current_name.lower() == match.lower():
                     selected = key
                     break
             if selected is None:

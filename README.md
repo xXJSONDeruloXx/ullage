@@ -120,6 +120,11 @@ The generated launcher receives Steam's game arguments and the bridge waits
 for Wine to exit before reaping prefix-owned helper processes, so Steam sees
 one supervised launch boundary.
 
+For games whose Windows executable is nested below the install root (for
+example, `windows/Game.exe`), set `--game-dir` to the Steam install directory,
+not the nested executable directory. Steam resolves the patched launch entry
+relative to that install root.
+
 To restore the native launch entry, quit Steam and run:
 
 ~~~sh

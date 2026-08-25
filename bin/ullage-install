@@ -23,7 +23,7 @@ Usage:
   ullage-install --appid ID --target PATH [options]
 
 Options:
-  --game-dir PATH             working directory (default: target directory)
+  --game-dir PATH             Steam install root/working directory (default: target directory)
   --prefix PATH               Wine prefix
   --arch auto|win32|win64     PE architecture (default: auto)
   --steam-root PATH           native Steam library root

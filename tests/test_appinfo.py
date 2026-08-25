@@ -44,12 +44,12 @@ def encode_v29_dict(value, pool):
     return bytes(output)
 
 
-def make_appinfo(version):
+def make_appinfo(version, executable="Game.exe"):
     sections = {
         "appinfo": {
             "config": {
                 "launch": {
-                    "0": {"executable": "Game.exe"},
+                    "0": {"executable": executable},
                 }
             }
         }
@@ -116,5 +116,15 @@ def exercise(version):
 
 for appinfo_version in (MODULE.APPINFO_28, MODULE.APPINFO_29):
     exercise(appinfo_version)
+
+
+for appinfo_version in (MODULE.APPINFO_28, MODULE.APPINFO_29):
+    with tempfile.TemporaryDirectory() as directory:
+        filename = Path(directory) / "appinfo.vdf"
+        filename.write_bytes(make_appinfo(appinfo_version, "windows\\JellyCar Worlds.exe"))
+        appinfo = MODULE.AppInfo(filename)
+        entry, original = appinfo.replace_launch(42, "ullage-launcher", match="JellyCar Worlds.exe")
+        assert entry == "0"
+        assert original == "windows\\JellyCar Worlds.exe"
 
 print("appinfo patch/restore: ok")
