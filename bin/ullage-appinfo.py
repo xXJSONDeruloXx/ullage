@@ -317,7 +317,7 @@ def main():
             )
             appinfo.write(args.appinfo)
             print(f"entry={entry}")
-            print(f"restored={current}")
+            print(f"restored={state['original']}")
     except (AppInfoError, OSError, ValueError, KeyError) as exc:
         print(f"ullage-appinfo: {exc}", file=sys.stderr)
         return 2
