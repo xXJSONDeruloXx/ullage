@@ -139,8 +139,9 @@ otherwise matches the target filename.
 
 Restart native Steam after installation and press the ordinary Play button.
 The generated launcher receives Steam's game arguments and the bridge waits
-for Wine to exit before reaping prefix-owned helper processes, so Steam sees
-one supervised launch boundary.
+for the prefix's Wine session to become idle before reaping prefix-owned
+helper processes, so Steam sees one supervised launch boundary even when
+Wine's `start.exe` launcher outlives the Windows process.
 
 Cloud lifecycle hooks are available without changing the Play mapping. Set an
 external command with `--cloud-sync-command`; Ullage runs it once with

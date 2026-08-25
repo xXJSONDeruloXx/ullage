@@ -67,6 +67,7 @@ LEGACY_STEAM=0
 DRY_RUN=0
 WINE_DEBUG_VALUE=${WINE_DEBUG_VALUE:--all}
 WINEMSYNC_VALUE=${WINEMSYNC_VALUE:-1}
+WINE_SESSION_WAIT=${WINE_SESSION_WAIT:-1}
 PRESERVE_STEAM_TRANSPORT=1
 CLOUD_SYNC_COMMAND=${CLOUD_SYNC_COMMAND:-}
 CLOUD_CDP=${CLOUD_CDP:-0}
@@ -413,11 +414,39 @@ forward_signal() {
     if [ -n "${WINE_CHILD_PID:-}" ]; then
         kill -TERM "$WINE_CHILD_PID" 2>/dev/null || true
     fi
+    if [ -n "${WINE_SERVER_WAIT_PID:-}" ]; then
+        kill -TERM "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
+    fi
 }
 
 wait_and_reap() {
     wine_exit=0
-    wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
+    if [ "$WINE_SESSION_WAIT" = 1 ]; then
+        # Some Wine builds leave start.exe alive after the Windows process has
+        # exited.  The server wait tracks the prefix's actual Wine session.
+        # Give the child a moment to register before asking an idle server.
+        sleep 0.2
+        "$WINESERVER" -w >>"$LOG_FILE" 2>&1 &
+        WINE_SERVER_WAIT_PID=$!
+        while kill -0 "$WINE_SERVER_WAIT_PID" 2>/dev/null; do
+            if ! kill -0 "$WINE_CHILD_PID" 2>/dev/null; then
+                wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
+                break
+            fi
+            sleep 0.1
+        done
+        if ! kill -0 "$WINE_SERVER_WAIT_PID" 2>/dev/null; then
+            wait "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
+            kill -TERM "$WINE_CHILD_PID" 2>/dev/null || true
+            wait "$WINE_CHILD_PID" 2>/dev/null || true
+            wine_exit=0
+        else
+            wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
+            wait "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
+        fi
+    else
+        wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
+    fi
     # A signal can interrupt wait(2) before Wine has observed the forwarded
     # TERM. Keep waiting while the exact child is still alive.
     while kill -0 "$WINE_CHILD_PID" 2>/dev/null; do

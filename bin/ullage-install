@@ -332,6 +332,7 @@ fi
     printf 'CLOUD_NATIVE_ADDPATH_ROOT=%s\n' "$(shell_quote "$CLOUD_NATIVE_ADDPATH_ROOT")"
     printf 'WINE_DEBUG_VALUE=%s\n' "$(shell_quote "$WINE_DEBUG_VALUE")"
     printf 'WINEMSYNC_VALUE=%s\n' "$(shell_quote "$WINEMSYNC_VALUE")"
+    printf 'WINE_SESSION_WAIT=%s\n' "$(shell_quote "${WINE_SESSION_WAIT:-1}")"
 } >"$CONFIG_TMP"
 
 {
