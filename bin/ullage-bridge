@@ -367,6 +367,11 @@ STEAM_APP_BUNDLE_PATH_VALUE=${STEAM_APP_BUNDLE_PATH:-}
 ENABLE_VK_LAYER_STEAM_OVERLAY_VALUE=${ENABLE_VK_LAYER_VALVE_steam_overlay_1:-}
 SDL_STEAM_GAMEPAD_VALUE=${SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD:-}
 SDL_IGNORE_DEVICES_VALUE=${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}
+if [ -n "$STEAM_VIRTUAL_GAMEPAD_INFO_VALUE" ]; then
+    STEAM_VIRTUAL_GAMEPAD_PRESENT=1
+else
+    STEAM_VIRTUAL_GAMEPAD_PRESENT=0
+fi
 
 {
     printf '\n[ullage-bridge] appid=%s arch=%s args=%s\n' "$APP_ID" "$ARCH" "$#"
@@ -376,6 +381,7 @@ SDL_IGNORE_DEVICES_VALUE=${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}
     printf '[ullage-bridge] host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf '[ullage-bridge] win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
     printf '[ullage-bridge] preserve_steam_transport=%s\n' "$PRESERVE_STEAM_TRANSPORT"
+    printf '[ullage-bridge] steam_virtual_gamepad_metadata=%s\n' "$STEAM_VIRTUAL_GAMEPAD_PRESENT"
     printf '[ullage-bridge] cloud_sync=%s\n' "${CLOUD_SYNC_COMMAND:+enabled}"
 } >>"$LOG_FILE" 2>&1
 
