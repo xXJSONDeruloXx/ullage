@@ -60,6 +60,8 @@ directory out of version control.
   prefix; it never performs a global process-name kill.
 * bin/ullage-appinfo.py — dependency-free editor for the single binary VDF
   launch record used by native macOS Steam.
+* bin/ullage-cloud-path.py — deterministic mapping of Windows Steam Cloud
+  roots into the selected Wine prefix; transport is intentionally separate.
 * bin/ullage-fd-exec — universal descriptor-boundary helper, built from
   src/ullage-fd-exec.c.
 * runtime/README.md — runtime and lsteamclient contract. The large third-party
