@@ -335,6 +335,7 @@ if [ "$DRY_RUN" = 1 ]; then
     printf 'host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf 'win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
     printf 'reaper=%s\n' "$REAPER"
+    printf 'wine_session_wait=%s\n' "$WINE_SESSION_WAIT"
     printf 'legacy_steam=%s\n' "$LEGACY_STEAM"
     printf 'preserve_steam_transport=%s\n' "$PRESERVE_STEAM_TRANSPORT"
     printf 'game_argument_count=%s\n' "$#"
