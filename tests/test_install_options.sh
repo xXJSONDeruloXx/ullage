@@ -4,44 +4,62 @@ set -eu
 ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
 INSTALL="$ROOT/bin/ullage-install"
 
-expect_native_conflict() {
+INSTALL_HELP=$("$INSTALL" --help 2>&1)
+BRIDGE_HELP=$("$ROOT/bin/ullage-bridge" --help 2>&1)
+
+expect_removed() {
+    command_path=$1
+    option=$2
     set +e
-    output=$(
-        "$INSTALL" \
-            --appid 1 \
-            --target /tmp/ullage-test-missing.exe \
-            --cloud-native \
-            "$@" 2>&1
-    )
+    output=$("$command_path" "$option" 2>&1)
     status=$?
     set -e
-    [ "$status" -eq 2 ]
+    [ "$status" -eq 2 ] || {
+        printf 'removed option unexpectedly succeeded: %s\n%s\n' "$option" "$output" >&2
+        exit 1
+    }
     case "$output" in
-        *"cannot be combined"*) ;;
+        *"unknown option"*) ;;
         *)
-            printf '%s\n' "$output" >&2
-            return 1
+            printf 'removed option did not report unknown option: %s\n%s\n' \
+                "$option" "$output" >&2
+            exit 1
             ;;
     esac
 }
 
-expect_native_conflict --cloud-cdp
-expect_native_conflict --cloud-sync-command true
-
-case "$("$INSTALL" --help 2>&1)" in
+case "$INSTALL_HELP" in
     *"--wine-dllpath PATHS"*) ;;
     *) printf '%s\n' 'installer missing --wine-dllpath' >&2; exit 1 ;;
 esac
-case "$("$INSTALL" --help 2>&1)" in
-    *"--steamclient64-forwarder PATH"*) ;;
-    *) printf '%s\n' 'installer missing --steamclient64-forwarder' >&2; exit 1 ;;
-esac
-case "$("$ROOT/bin/ullage-bridge" --help 2>&1)" in
+case "$BRIDGE_HELP" in
     *"--wine-dllpath PATHS"*) ;;
     *) printf '%s\n' 'bridge missing --wine-dllpath' >&2; exit 1 ;;
 esac
-case "$("$ROOT/bin/ullage-bridge" --help 2>&1)" in
+case "$INSTALL_HELP" in
+    *"--steamclient64-forwarder PATH"*) ;;
+    *) printf '%s\n' 'installer missing --steamclient64-forwarder' >&2; exit 1 ;;
+esac
+case "$BRIDGE_HELP" in
     *"--steamclient64-forwarder PATH"*) ;;
     *) printf '%s\n' 'bridge missing --steamclient64-forwarder' >&2; exit 1 ;;
 esac
-printf '%s\n' 'install option conflicts: ok'
+case "$INSTALL_HELP" in
+    *"--cloud-native"*) ;;
+    *) printf '%s\n' 'installer missing --cloud-native' >&2; exit 1 ;;
+esac
+case "$INSTALL_HELP" in
+    *"--cloud-steam3-account-id ID"*) ;;
+    *) printf '%s\n' 'installer missing native Cloud seed account option' >&2; exit 1 ;;
+esac
+case "$INSTALL_HELP$BRIDGE_HELP" in
+    *"--cloud-sync-command"*|*"--cloud-cdp"*)
+        printf '%s\n' 'external Cloud fallback options remain exposed' >&2
+        exit 1
+        ;;
+esac
+expect_removed "$INSTALL" --cloud-cdp
+expect_removed "$ROOT/bin/ullage-bridge" --cloud-cdp
+expect_removed "$INSTALL" --cloud-sync-command
+expect_removed "$ROOT/bin/ullage-bridge" --cloud-sync-command
+printf '%s\n' 'install options: ok'

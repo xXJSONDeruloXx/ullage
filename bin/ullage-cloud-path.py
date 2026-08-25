@@ -2,7 +2,7 @@
 """Resolve Steam Auto Cloud Windows roots inside an Ullage Wine prefix.
 
 This deliberately does not perform network I/O or modify Steam metadata.  It
-is the path layer for a future Cloud adapter: native macOS Steam cannot
+is the path layer for Ullage's native Cloud mapping: native macOS Steam cannot
 resolve WinAppData* roots, but the Windows game must see those files below its
 Wine prefix.
 """

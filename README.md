@@ -67,15 +67,9 @@ runtime provenance.
 * bin/ullage-path.py — tested path helper for Steam's install-root-relative
   external launcher entry.
 * bin/ullage-cloud-path.py — deterministic mapping of Windows Steam Cloud
-  roots into the selected Wine prefix; transport is intentionally separate.
+  roots into the selected Wine prefix for native Cloud mapping.
 * bin/ullage-cloud-native.py — local appinfo root overrides and guarded
   MacAppSupport symlinks so native Steam owns Cloud transfer and badge state.
-* bin/ullage-cloud-sync.py — read-only Steam Cloud enumeration and optional
-  prefix download using signed Steam links or `ULLAGE_STEAM_ACCESS_TOKEN`;
-  uploads remain gated in this fallback path.
-* bin/ullage-cloud-cdp.mjs — optional native Steam CEF/CDP Cloud metadata and
-  download reader using the logged-in browser session without persisting
-  credentials.
 * bin/ullage-fd-exec — universal descriptor-boundary helper, built from
   src/ullage-fd-exec.c.
 * tools/ullage-steamworks-probe.c — optional MinGW diagnostic for direct
@@ -192,17 +186,7 @@ the recorded entry as an optimistic concurrency check, and refuses to
 overwrite a foreign mapping unless `--force` is explicit. It does not recreate
 missing runtime state; reinstall or restore that state first.
 
-Cloud lifecycle hooks are available without changing the Play mapping. Set an
-external command with `--cloud-sync-command`; Ullage runs it once with
-`ULLAGE_CLOUD_PHASE=pre` before Wine and once with `post` after Wine/reaping.
-The command also receives `ULLAGE_APPID`, `ULLAGE_PREFIX`, `ULLAGE_APPINFO`,
-`ULLAGE_STEAM_ROOT`, `ULLAGE_STEAM3_ACCOUNT_ID`, and `ULLAGE_WINE_USER`. This
-keeps credentials out of generated appinfo and lets one reusable hook invoke
-`bin/ullage-cloud-hook`, which selects `--download` before launch and
-`--upload` after exit. Upload is explicit local-wins behavior and should not be
-enabled until the title's conflict policy is understood.
-
-For a Windows-only game's `WinAppData*` files, `--cloud-native` is the primary
+For a Windows-only game's `WinAppData*` files, `--cloud-native` is the supported
 path. It edits the local UFS metadata while Steam is stopped, adding an
 `os=Windows` `useinstead=MacAppSupport` override that matches the forced depot
 platform. It then creates a guarded symlink such as:
@@ -227,33 +211,34 @@ stale local root IDs without opening a browser or making a network request; it
 never overwrites an existing prefix file. Native Steam owns all subsequent
 Cloud transfer and conflict behavior.
 
-This native path is the normal mode and should not be paired with the optional
-CDP lifecycle hook. When native Cloud is active, no browser page or per-file
-fallback downloader is involved in Play, launch, or exit synchronization.
-The installer rejects `--cloud-native` combined with `--cloud-cdp` or
-`--cloud-sync-command` so a native mapping cannot silently fall back to a
-second Cloud transport.
-
-For a Steam client started with `-cef-enable-debugging`, add `--cloud-cdp` to
-use the native authenticated CEF session for pre-launch Cloud metadata. Steam
-mints short-lived signed CDN links in that page; Ullage streams those links
-directly and only falls back to refreshing the page if a link expires. It does
-not open a separate Chrome window or navigate the browser once per file. A
-per-AppID cache under `~/.ullage/cloud` avoids re-transferring files whose
-remote size/timestamp and local SHA-1 are unchanged. CDP mode is
-read/download-only; post-exit upload is skipped rather than falsely reported.
-The default `--cloud-wine-user auto` reads the prefix's `user.reg` and maps
-files into the Windows user that the game actually runs as; pass an explicit
-name only for a deliberately nonstandard prefix.
+This native path is the only Ullage Cloud transport. Native Steam watches,
+downloads, uploads, hashes, and records the real prefix files itself; Ullage
+does not provide a browser, token, or per-file transfer fallback. The default
+`--cloud-wine-user auto` reads the prefix's `user.reg` and maps files into the
+Windows user that the game actually runs as; pass an explicit name only for a
+deliberately nonstandard prefix.
 
 The badge is now part of the native path rather than a UI fiction. Once the
 override points at the prefix, Steam's own Auto-Cloud resolver updates
 `remotecache.vdf` and the normal macOS client displays the ordinary current
 Cloud state. This is proven locally for Katamari Damacy REROLL (2 files),
-JellyCar Worlds (22 files), RACCOIN (12 files), and Sonic Mania's mixed-root
+JellyCar Worlds (22 files), RACCOON (12 files), and Sonic Mania's mixed-root
 configuration after its one-time local-cache seed. It is not yet a universal
 claim: titles with different UFS roots, path transforms, or a Steam metadata
 refresh still need acceptance testing.
+
+The external token, CEF/CDP, and pre/post lifecycle fallback paths were
+removed deliberately. If a title's UFS roots cannot be mapped natively,
+Ullage fails at setup instead of starting a second Cloud transport.
+Older generated configs may still contain the removed `CLOUD_*` assignments;
+the bridge ignores those inert values, while external scripts using the
+removed command-line options must migrate to `--cloud-native`.
+
+A fresh Katamari setup was validated from a clean appinfo baseline with a new
+state directory: native Steam displayed “Your Steam Cloud files are
+synchronized for this app,” its local `remotecache.vdf` contained both save
+records, and native Play/Stop completed through the PR branch without any
+browser or token-based transfer.
 
 For games whose Windows executable is nested below the install root (for
 example, `windows/Game.exe`), set `--install-dir` to the Steam install
