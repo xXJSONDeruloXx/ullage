@@ -152,3 +152,8 @@ claim that every game renderer, DRM scheme, or cloud implementation works.
 The next work belongs above this small core: runtime discovery, renderer
 profiles, cloud verification, arm64-native Wine, and recovery when Steam
 rewrites its local launch cache.
+
+Upstream-sensitive Wine/Proton portability work is maintained separately in
+[ullage-patches](https://github.com/xXJSONDeruloXx/ullage-patches), with pinned
+source provenance and reproducible patch checks. This repository intentionally
+remains the small Steam launch bridge rather than becoming a dependency fork.

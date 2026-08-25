@@ -20,6 +20,10 @@ Proton/Wine source tree. On Apple Silicon, the currently tested third-party
 Wine runtime is x86_64 under Rosetta; an arm64-native Wine runtime is a future
 target, not an assumption made by this repository.
 
+The maintainable macOS portability patch set and its exact upstream pin live in
+the separate [ullage-patches](https://github.com/xXJSONDeruloXx/ullage-patches)
+repository. Ullage does not fork or vendor that source tree.
+
 The native Steam client remains the source of steamclient.dylib, loader
 environment, IPC descriptors, user/session state, and overlay services. Ullage
 only passes those through the Wine launch boundary.
