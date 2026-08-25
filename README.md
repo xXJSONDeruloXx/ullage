@@ -130,6 +130,9 @@ Add --arch win32 or --arch win64 when automatic PE detection is not enough.
 Add --legacy-steam only for older titles whose prepared prefix contains the
 legacy Steam DLL set. Transport preservation is the default; use
 --clean-steam-transport only as a title-specific fallback.
+If Steam's cached launch entry names a wrapper or stale executable instead of
+the target PE, pass its numeric key with `--launch-entry KEY`; the installer
+otherwise matches the target filename.
 
 Restart native Steam after installation and press the ordinary Play button.
 The generated launcher receives Steam's game arguments and the bridge waits

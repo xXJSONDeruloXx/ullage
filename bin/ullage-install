@@ -26,6 +26,7 @@ Usage:
   ullage-install --appid ID --target PATH [options]
 
 Options:
+  --launch-entry KEY           explicit appinfo launch entry when names differ
   --game-dir PATH             working directory (default: target directory)
   --install-dir PATH          Steam install root for the relative launch entry (default: game-dir)
   --state-dir PATH            generated state root (default: ~/.ullage)
@@ -60,6 +61,7 @@ EOF
 
 APP_ID=
 TARGET=
+LAUNCH_ENTRY=
 GAME_DIR=
 INSTALL_DIR=
 PREFIX=
@@ -88,6 +90,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --appid) [ "$#" -ge 2 ] || die "--appid requires a value"; APP_ID=$2; shift 2 ;;
         --target) [ "$#" -ge 2 ] || die "--target requires a path"; TARGET=$2; shift 2 ;;
+        --launch-entry) [ "$#" -ge 2 ] || die "--launch-entry requires a key"; LAUNCH_ENTRY=$2; shift 2 ;;
         --game-dir) [ "$#" -ge 2 ] || die "--game-dir requires a path"; GAME_DIR=$2; shift 2 ;;
         --install-dir) [ "$#" -ge 2 ] || die "--install-dir requires a path"; INSTALL_DIR=$2; shift 2 ;;
         --state-dir) [ "$#" -ge 2 ] || die "--state-dir requires a path"; STATE_HOME=$2; shift 2 ;;
@@ -122,6 +125,7 @@ done
 [ -n "$APP_ID" ] || die "missing --appid"
 [ -n "$TARGET" ] || die "missing --target"
 case "$APP_ID" in *[!0-9]*|'') die "AppID must be numeric: $APP_ID" ;; esac
+[ -z "$LAUNCH_ENTRY" ] || case "$LAUNCH_ENTRY" in *[!0-9]*|'') die "launch entry must be numeric: $LAUNCH_ENTRY" ;; esac
 [ -x "$BRIDGE" ] || die "bridge is missing or not executable: $BRIDGE"
 [ -x "$SCRIPT_DIR/ullage-fd-exec" ] || die "fd helper is missing or not executable: $SCRIPT_DIR/ullage-fd-exec"
 [ -x "$APPINFO_TOOL" ] || die "appinfo editor is missing or not executable: $APPINFO_TOOL"
@@ -294,6 +298,7 @@ fi
 
 {
     printf 'APP_ID=%s\n' "$(shell_quote "$APP_ID")"
+    printf 'LAUNCH_ENTRY=%s\n' "$(shell_quote "$LAUNCH_ENTRY")"
     printf 'STATE_HOME=%s\n' "$(shell_quote "$STATE_HOME")"
     printf 'GAME_EXE=%s\n' "$(shell_quote "$TARGET")"
     printf 'GAME_DIR=%s\n' "$(shell_quote "$GAME_DIR")"
@@ -329,12 +334,21 @@ fi
 } >"$LAUNCHER_TMP"
 chmod 755 "$LAUNCHER_TMP"
 
-"$PYTHON3_BIN" "$APPINFO_TOOL" patch \
-    --appinfo "$APPINFO_TMP" \
-    --appid "$APP_ID" \
-    --match "$TARGET_NAME" \
-    --replace "$LAUNCH_REL" \
-    --state-out "$STATE_TMP"
+if [ -n "$LAUNCH_ENTRY" ]; then
+    "$PYTHON3_BIN" "$APPINFO_TOOL" patch \
+        --appinfo "$APPINFO_TMP" \
+        --appid "$APP_ID" \
+        --entry "$LAUNCH_ENTRY" \
+        --replace "$LAUNCH_REL" \
+        --state-out "$STATE_TMP"
+else
+    "$PYTHON3_BIN" "$APPINFO_TOOL" patch \
+        --appinfo "$APPINFO_TMP" \
+        --appid "$APP_ID" \
+        --match "$TARGET_NAME" \
+        --replace "$LAUNCH_REL" \
+        --state-out "$STATE_TMP"
+fi
 if [ "$CLOUD_NATIVE" -eq 1 ]; then
     "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" install \
         --appinfo "$APPINFO_TMP" \

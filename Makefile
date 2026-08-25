@@ -19,6 +19,7 @@ check:
 	@$(PYTHON3) bin/ullage-appinfo.py --help >/dev/null
 	@$(PYTHON3) tests/test_appinfo.py
 	@$(PYTHON3) tests/test_paths.py
+	@$(PYTHON3) tests/test_reap.py
 	@$(PYTHON3) -m py_compile bin/ullage-cloud-path.py
 	@$(PYTHON3) tests/test_cloud_path.py
 	@$(PYTHON3) -m py_compile bin/ullage-cloud-sync.py

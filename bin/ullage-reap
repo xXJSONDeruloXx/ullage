@@ -75,9 +75,9 @@ owns_prefix() {
 is_live_helper() {
     process_id=$1
     process_command=$($PS -p "$process_id" -o command= -ww 2>/dev/null | /usr/bin/sed 's/^ *//')
+    process_command=${process_command%% *}
     process_name=${process_command##*/}
     process_name=${process_name##*\\}
-    process_name=${process_name%% *}
     [ -n "$process_name" ] || return 1
     is_helper_name "$process_name" || return 1
     owns_prefix "$process_id"
@@ -87,9 +87,9 @@ list_helpers() {
     [ -x "$LSOF" ] || return 0
     while IFS=' ' read -r process_id process_command; do
         [ -n "$process_id" ] || continue
+        process_command=${process_command%% *}
         process_name=${process_command##*/}
         process_name=${process_name##*\\}
-        process_name=${process_name%% *}
         is_helper_name "$process_name" || continue
         owns_prefix "$process_id" || continue
         printf '%s\n' "$process_id"
