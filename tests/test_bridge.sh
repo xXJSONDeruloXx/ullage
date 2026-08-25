@@ -80,6 +80,7 @@ make_case() {
     : >"$case_root/game/test.exe"
     config=$case_root/config
     log=$case_root/bridge.log
+    legacy_cloud_marker=$case_root/legacy-cloud-hook-ran
     printf '%s\n' \
         "APP_ID='42'" \
         "GAME_EXE='$case_root/game/test.exe'" \
@@ -93,6 +94,8 @@ make_case() {
         "FD_EXEC='$TEMP_ROOT/fd-exec'" \
         "REAPER='$TEMP_ROOT/reaper'" \
         "LOG_FILE='$log'" \
+        "CLOUD_SYNC_COMMAND='touch $legacy_cloud_marker'" \
+        "CLOUD_CDP='1'" \
         "PRESERVE_STEAM_TRANSPORT='0'" \
         "WINE_SESSION_WAIT='1'" \
         "WINE_DEBUG_VALUE='-all'" \
@@ -102,6 +105,7 @@ make_case() {
     CASE_PREFIX=$prefix
     CASE_STEAM_LOG=$steam_root/logs/content_log.txt
     CASE_BRIDGE_ROOT=$bridge_root
+    CASE_LEGACY_CLOUD_MARKER=$legacy_cloud_marker
 }
 
 make_case early-exit slow-exit
@@ -115,6 +119,10 @@ set -e
 }
 grep -F 'wine_exit=7 signal_received=0' "$CASE_LOG" >/dev/null
 grep -F -- '-w:' "$CASE_PREFIX/wineserver-events" >/dev/null
+[ ! -e "$CASE_LEGACY_CLOUD_MARKER" ] || {
+    printf '%s\n' 'legacy Cloud hook unexpectedly ran' >&2
+    exit 1
+}
 
 make_case signal term-hang
 set +e

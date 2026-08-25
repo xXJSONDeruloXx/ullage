@@ -11,7 +11,7 @@ bin/ullage-fd-exec: src/ullage-fd-exec.c
 
 check:
 	@set -eu; \
-	for script in bin/ullage-bridge bin/ullage-install bin/ullage-remove bin/ullage-reap bin/ullage-cloud-hook; do \
+	for script in bin/ullage-bridge bin/ullage-install bin/ullage-remove bin/ullage-reap; do \
 		sh -n "$$script"; \
 	done
 	@sh tests/test_install_options.sh
@@ -23,11 +23,9 @@ check:
 	@$(PYTHON3) tests/test_paths.py
 	@$(PYTHON3) tests/test_reap.py
 	@$(PYTHON3) tests/test_cloud_path.py
-	@$(PYTHON3) tests/test_cloud_sync.py
 	@$(PYTHON3) tests/test_cloud_native.py
 	@sh tests/test_bridge.sh
 	@sh tests/test_steamworks_probe.sh
-	@node --check bin/ullage-cloud-cdp.mjs
 
 clean:
 	@if test -e bin/ullage-fd-exec; then unlink bin/ullage-fd-exec; fi
