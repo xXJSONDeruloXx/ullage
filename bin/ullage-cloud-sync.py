@@ -36,11 +36,11 @@ def cloud_patterns(appinfo, appid):
     return [item for item in savefiles.values() if isinstance(item, dict)]
 
 
-def steam_filename(pattern, steam3_id):
+def steam_filename(pattern, steam3_id, steamid64):
     root = pattern.get("root")
     path = str(pattern.get("path", ""))
     path = path.replace("{Steam3AccountID}", str(steam3_id))
-    path = path.replace("{64BitSteamID}", str(steam3_id))
+    path = path.replace("{64BitSteamID}", str(steamid64))
     return f"%{root}%{path}".replace("\\", "/").rstrip("/")
 
 
@@ -75,17 +75,17 @@ def enumerate_files(appid, token):
     return payload.get("response", payload).get("files", [])
 
 
-def safe_destination(prefix, user, filename, patterns, steam3_id):
+def safe_destination(prefix, user, filename, patterns, steam3_id, steamid64):
     normalized = filename.replace("\\", "/")
     for pattern in patterns:
-        cloud_prefix = steam_filename(pattern, steam3_id)
+        cloud_prefix = steam_filename(pattern, steam3_id, steamid64)
         if normalized == cloud_prefix or normalized.startswith(cloud_prefix + "/"):
             relative = normalized[len(cloud_prefix):].lstrip("/")
             return CLOUD_PATH.resolve(prefix, user, pattern["root"], pattern.get("path", "").replace("{Steam3AccountID}", str(steam3_id)) + "/" + relative)
     return None
 
 
-def local_files(prefix, user, patterns, steam3_id):
+def local_files(prefix, user, patterns, steam3_id, steamid64):
     for pattern in patterns:
         root = pattern.get("root")
         base = CLOUD_PATH.resolve(prefix, user, root, str(pattern.get("path", "")).replace("{Steam3AccountID}", str(steam3_id)))
@@ -94,7 +94,7 @@ def local_files(prefix, user, patterns, steam3_id):
         for candidate in base.rglob("*"):
             if candidate.is_file():
                 relative = candidate.relative_to(base).as_posix()
-                yield steam_filename(pattern, steam3_id) + "/" + relative, candidate
+                yield steam_filename(pattern, steam3_id, steamid64) + "/" + relative, candidate
 
 
 def sha1(filename):
@@ -105,10 +105,10 @@ def sha1(filename):
     return digest.hexdigest()
 
 
-def upload_files(appid, token, prefix, user, patterns, steam3_id, remote):
+def upload_files(appid, token, prefix, user, patterns, steam3_id, steamid64, remote):
     remote_by_name = {item.get("filename"): item for item in remote}
     candidates = []
-    for cloud_name, filename in local_files(prefix, user, patterns, steam3_id):
+    for cloud_name, filename in local_files(prefix, user, patterns, steam3_id, steamid64):
         digest = sha1(filename)
         if remote_by_name.get(cloud_name, {}).get("file_sha", "").lower() != digest:
             candidates.append((cloud_name, filename, digest))
@@ -170,6 +170,7 @@ def main():
     parser.add_argument("--prefix", required=True)
     parser.add_argument("--user", required=True)
     parser.add_argument("--steam3-account-id", required=True)
+    parser.add_argument("--steamid64", help="64-bit SteamID for {64BitSteamID} paths (defaults to Steam3 ID)")
     parser.add_argument("--download", action="store_true", help="write matching cloud files into the prefix")
     parser.add_argument("--upload", action="store_true", help="upload changed local files (local-wins; explicit opt-in)")
     args = parser.parse_args()
@@ -179,11 +180,12 @@ def main():
         return 2
 
     appinfo = APPINFO.AppInfo(args.appinfo)
+    steamid64 = args.steamid64 or args.steam3_account_id
     patterns = cloud_patterns(appinfo, args.appid)
     files = enumerate_files(args.appid, token)
     matched = 0
     for item in files:
-        destination = safe_destination(args.prefix, args.user, item.get("filename", ""), patterns, args.steam3_account_id)
+        destination = safe_destination(args.prefix, args.user, item.get("filename", ""), patterns, args.steam3_account_id, steamid64)
         if destination is None:
             continue
         matched += 1
@@ -194,7 +196,7 @@ def main():
                 target.write(source.read())
     print(f"matched={matched}")
     if args.upload:
-        upload_files(args.appid, token, args.prefix, args.user, patterns, args.steam3_account_id, files)
+        upload_files(args.appid, token, args.prefix, args.user, patterns, args.steam3_account_id, steamid64, files)
     return 0
 
 

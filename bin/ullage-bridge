@@ -65,6 +65,7 @@ WINEMSYNC_VALUE=${WINEMSYNC_VALUE:-1}
 PRESERVE_STEAM_TRANSPORT=1
 CLOUD_SYNC_COMMAND=${CLOUD_SYNC_COMMAND:-}
 CLOUD_STEAM3_ACCOUNT_ID=${CLOUD_STEAM3_ACCOUNT_ID:-}
+CLOUD_STEAMID64=${CLOUD_STEAMID64:-}
 CLOUD_WINE_USER=${CLOUD_WINE_USER:-${USER:-}}
 
 load_config() {
@@ -179,6 +180,11 @@ while [ "$#" -gt 0 ]; do
         --cloud-wine-user)
             [ "$#" -ge 2 ] || die "--cloud-wine-user requires a value"
             CLOUD_WINE_USER=$2
+            shift 2
+            ;;
+        --cloud-steamid64)
+            [ "$#" -ge 2 ] || die "--cloud-steamid64 requires a value"
+            CLOUD_STEAMID64=$2
             shift 2
             ;;
         --no-legacy-steam)
@@ -360,6 +366,7 @@ run_cloud_sync() {
     ULLAGE_STEAM_ROOT=$STEAM_ROOT \
     ULLAGE_APPINFO=$STEAM_ROOT/appcache/appinfo.vdf \
     ULLAGE_STEAM3_ACCOUNT_ID=$CLOUD_STEAM3_ACCOUNT_ID \
+    ULLAGE_STEAMID64=$CLOUD_STEAMID64 \
     ULLAGE_WINE_USER=$CLOUD_WINE_USER \
         /bin/sh -c "$CLOUD_SYNC_COMMAND" >>"$LOG_FILE" 2>&1
 }
