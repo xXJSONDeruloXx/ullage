@@ -56,6 +56,8 @@ runtime provenance.
   mapping while Steam is stopped.
 * bin/ullage-remove — restore the original launch entry and move generated
   state to recoverable backups.
+* bin/ullage-mapping.py — read-only mapping health and conservative repair after
+  Steam rewrites its local appinfo cache.
 * bin/ullage-bridge — launch Wine with a clean, explicit environment and
   preserve native Steam transport by default.
 * bin/ullage-reap — stop and reap only Wine helpers that still own the selected
@@ -139,9 +141,41 @@ otherwise matches the target filename.
 
 Restart native Steam after installation and press the ordinary Play button.
 The generated launcher receives Steam's game arguments and the bridge waits
-for the prefix's Wine session to become idle before reaping prefix-owned
-helper processes, so Steam sees one supervised launch boundary even when
-Wine's `start.exe` launcher outlives the Windows process.
+for the exact Wine launcher to exit, then waits for the prefix's Wine session
+to become idle before reaping prefix-owned helper processes. This keeps a slow
+game startup from being killed by an early `wineserver -w` return and gives
+Steam one supervised launch boundary even when Wine's `start.exe` launcher
+outlives the Windows process.
+
+## Check or repair a mapping
+
+Steam can regenerate `appcache/appinfo.vdf` during a client update or metadata
+refresh. Inspect a mapping while Steam is running or stopped:
+
+~~~sh
+"$HOME/Developer/ullage/bin/ullage-mapping.py" status \
+  --appid APPID \
+  --steam-root "$HOME/Library/Application Support/Steam"
+~~~
+
+`status=healthy` means the recorded launch entry, generated config, and
+launcher agree. `stale` means Steam restored the recorded native executable;
+`foreign` means some other local change owns the entry; `broken` means the
+entry still points at Ullage but generated state is incomplete. Status is
+read-only and returns nonzero for anything that is not healthy.
+
+After fully quitting Steam, a stale mapping can be reapplied atomically:
+
+~~~sh
+"$HOME/Developer/ullage/bin/ullage-mapping.py" repair \
+  --appid APPID \
+  --steam-root "$HOME/Library/Application Support/Steam"
+~~~
+
+Repair writes a private appinfo backup under `~/.ullage/backups/appinfo`, uses
+the recorded entry as an optimistic concurrency check, and refuses to
+overwrite a foreign mapping unless `--force` is explicit. It does not recreate
+missing runtime state; reinstall or restore that state first.
 
 Cloud lifecycle hooks are available without changing the Play mapping. Set an
 external command with `--cloud-sync-command`; Ullage runs it once with

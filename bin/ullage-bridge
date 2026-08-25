@@ -262,7 +262,7 @@ if [ -z "$LOG_FILE" ]; then
     LOG_FILE="$STATE_HOME/logs/$APP_ID.log"
 fi
 
-FILE_CMD=/usr/bin/file
+FILE_CMD=${FILE_CMD:-/usr/bin/file}
 [ -x "$FILE_CMD" ] || die "missing /usr/bin/file"
 GAME_FILE_INFO=$($FILE_CMD -b "$GAME_EXE")
 case "$ARCH" in
@@ -422,38 +422,28 @@ forward_signal() {
 
 wait_and_reap() {
     wine_exit=0
-    if [ "$WINE_SESSION_WAIT" = 1 ]; then
-        # Some Wine builds leave start.exe alive after the Windows process has
-        # exited.  The server wait tracks the prefix's actual Wine session.
-        # Give the child a moment to register before asking an idle server.
-        sleep 0.2
-        "$WINESERVER" -w >>"$LOG_FILE" 2>&1 &
-        WINE_SERVER_WAIT_PID=$!
-        while kill -0 "$WINE_SERVER_WAIT_PID" 2>/dev/null; do
-            if ! kill -0 "$WINE_CHILD_PID" 2>/dev/null; then
-                wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
-                break
-            fi
-            sleep 0.1
-        done
-        if ! kill -0 "$WINE_SERVER_WAIT_PID" 2>/dev/null; then
-            wait "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
-            kill -TERM "$WINE_CHILD_PID" 2>/dev/null || true
-            wait "$WINE_CHILD_PID" 2>/dev/null || true
-            wine_exit=0
-        else
-            wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
-            wait "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
-        fi
-    else
+    # Reap the exact Wine launcher before waiting for the prefix server. A
+    # parallel `wineserver -w` can return before a slow game registers its
+    # server; treating that as completion kills a game that is still starting
+    # and reports a false success.
+    while :; do
         wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
-    fi
-    # A signal can interrupt wait(2) before Wine has observed the forwarded
-    # TERM. Keep waiting while the exact child is still alive.
-    while kill -0 "$WINE_CHILD_PID" 2>/dev/null; do
-        wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
+        # A signal can interrupt wait(2) before Wine has observed the forwarded
+        # TERM. Keep waiting while the exact child is still alive. Once wait
+        # has reaped it, kill -0 is false and the recorded status is final.
+        kill -0 "$WINE_CHILD_PID" 2>/dev/null || break
     done
     WINE_CHILD_PID=
+
+    if [ "$WINE_SESSION_WAIT" = 1 ]; then
+        # Some Wine builds leave start.exe or helper processes alive after the
+        # Windows process exits. This drains that prefix-scoped session without
+        # ever deciding that the game child is disposable.
+        WINEPREFIX="$PREFIX" "$WINESERVER" -w >>"$LOG_FILE" 2>&1 &
+        WINE_SERVER_WAIT_PID=$!
+        wait "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
+    fi
+
     trap - HUP INT TERM
 
     "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" >>"$LOG_FILE" 2>&1 ||
