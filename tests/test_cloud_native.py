@@ -117,6 +117,18 @@ for version in (MODULE.APPINFO.APPINFO_28, MODULE.APPINFO.APPINFO_29):
         assert overrides["0"]["os"] == "MacOS"
         assert not Path(entry["link"]).exists()
 
+with tempfile.TemporaryDirectory() as directory:
+    prefix = Path(directory)
+    users = prefix / "drive_c" / "users"
+    (users / "alice").mkdir(parents=True)
+    (users / "bob").mkdir()
+    try:
+        MODULE.resolve_wine_user(prefix, "auto")
+    except MODULE.NativeCloudError:
+        pass
+    else:
+        raise AssertionError("ambiguous Wine user was guessed")
+
 
 for version in (MODULE.APPINFO.APPINFO_28, MODULE.APPINFO.APPINFO_29):
     with tempfile.TemporaryDirectory() as directory:

@@ -38,6 +38,18 @@ with tempfile.TemporaryDirectory() as temporary:
     assert MODULE.resolve_wine_user(prefix, "explicit") == "explicit"
 
 with tempfile.TemporaryDirectory() as temporary:
+    prefix = Path(temporary)
+    users = prefix / "drive_c" / "users"
+    (users / "alice").mkdir(parents=True)
+    (users / "bob").mkdir()
+    try:
+        MODULE.resolve_wine_user(prefix, "auto")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("ambiguous Wine user was guessed")
+
+with tempfile.TemporaryDirectory() as temporary:
     base = Path(temporary)
     source = base / "source.bin"
     destination = base / "nested" / "save.bin"

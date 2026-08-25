@@ -15,26 +15,19 @@ check:
 		sh -n "$$script"; \
 	done
 	@sh tests/test_install_options.sh
-	@$(PYTHON3) -m py_compile bin/ullage-appinfo.py
-	@$(PYTHON3) -m py_compile bin/ullage-path.py
+	@$(PYTHON3) -m py_compile bin/*.py
 	@$(PYTHON3) bin/ullage-appinfo.py --help >/dev/null
 	@$(PYTHON3) tests/test_appinfo.py
 	@$(PYTHON3) tests/test_paths.py
 	@$(PYTHON3) tests/test_reap.py
-	@$(PYTHON3) -m py_compile bin/ullage-cloud-path.py
 	@$(PYTHON3) tests/test_cloud_path.py
-	@$(PYTHON3) -m py_compile bin/ullage-cloud-sync.py
 	@$(PYTHON3) tests/test_cloud_sync.py
-	@$(PYTHON3) -m py_compile bin/ullage-cloud-native.py
 	@$(PYTHON3) tests/test_cloud_native.py
 	@node --check bin/ullage-cloud-cdp.mjs
 
 clean:
 	@if test -e bin/ullage-fd-exec; then unlink bin/ullage-fd-exec; fi
-	@if test -e bin/__pycache__/ullage-appinfo.cpython-*.pyc; then \
-		unlink bin/__pycache__/ullage-appinfo.cpython-*.pyc; \
+	@if test -d bin/__pycache__; then \
+		find bin/__pycache__ -type f -name '*.pyc' -delete; \
+		rmdir bin/__pycache__ 2>/dev/null || true; \
 	fi
-	@if test -e bin/__pycache__/ullage-path.cpython-*.pyc; then \
-		unlink bin/__pycache__/ullage-path.cpython-*.pyc; \
-	fi
-	@if test -d bin/__pycache__; then rmdir bin/__pycache__; fi

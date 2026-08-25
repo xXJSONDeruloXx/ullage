@@ -3,7 +3,6 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
-BRIDGE_HOME=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 APPINFO_TOOL="$SCRIPT_DIR/ullage-appinfo.py"
 CLOUD_NATIVE_TOOL="$SCRIPT_DIR/ullage-cloud-native.py"
 HOME_VALUE=${HOME:-/tmp}
@@ -53,10 +52,12 @@ fi
 
 STAMP=$(/bin/date +%Y%m%d-%H%M%S).$$
 BACKUP_DIR="$STATE_HOME/backups/appinfo"
+umask 077
 mkdir -p "$BACKUP_DIR"
 APPINFO_BACKUP="$BACKUP_DIR/$APP_ID-remove-$STAMP.vdf"
 APPINFO_TMP="$APPINFO.tmp.$$"
 cp -p "$APPINFO" "$APPINFO_BACKUP"
+chmod 600 "$APPINFO_BACKUP"
 cp -p "$APPINFO" "$APPINFO_TMP"
 
 remove_file() {

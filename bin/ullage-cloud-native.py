@@ -55,7 +55,7 @@ def resolve_wine_user(prefix, requested):
     user_reg = prefix_path / "user.reg"
     if user_reg.is_file():
         match = re.search(
-            r'"USERPROFILE"="C:\\users\\([^"\\]+)"',
+            r'"USERPROFILE"="C:\\\\users\\\\([^"\\]+)"',
             user_reg.read_text(encoding="utf-8", errors="ignore"),
             re.IGNORECASE,
         )
@@ -73,7 +73,9 @@ def resolve_wine_user(prefix, requested):
         return next(item for item in candidates if item.lower() == "steamuser")
     if len(candidates) == 1:
         return candidates[0]
-    return "steamuser"
+    raise NativeCloudError(
+        "cannot determine Wine user automatically; pass --cloud-wine-user"
+    )
 
 
 def app_ufs(appinfo, appid):

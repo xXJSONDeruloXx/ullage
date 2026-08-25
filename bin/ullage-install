@@ -3,7 +3,7 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
-BRIDGE_HOME=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
+REPO_ROOT=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 BRIDGE="$SCRIPT_DIR/ullage-bridge"
 APPINFO_TOOL="$SCRIPT_DIR/ullage-appinfo.py"
 PATH_TOOL="$SCRIPT_DIR/ullage-path.py"
@@ -71,7 +71,7 @@ STEAM_ROOT="${STEAM_ROOT:-$HOME_VALUE/Library/Application Support/Steam}"
 WINE_ROOT="${WINE_ROOT:-}"
 WINE_DLLPATH_VALUE="${WINE_DLLPATH:-}"
 GPTK_ROOT="${GPTK_ROOT:-}"
-BRIDGE_ROOT="${BRIDGE_ROOT:-$BRIDGE_HOME/runtime/lsteamclient}"
+BRIDGE_ROOT="${BRIDGE_ROOT:-$REPO_ROOT/runtime/lsteamclient}"
 LOG_FILE=
 WINE_DEBUG_VALUE=${WINEDEBUG:--all}
 WINEMSYNC_VALUE=${WINEMSYNC:-1}
@@ -244,8 +244,8 @@ if [ "$CLOUD_NATIVE" -eq 1 ] && [ -e "$CLOUD_STATE_FILE" ] && [ "$FORCE" -ne 1 ]
     die "native Cloud state exists (use ullage-remove first or --force): $CLOUD_STATE_FILE"
 fi
 
-mkdir -p "$CONFIG_DIR" "$LAUNCHER_DIR" "$STATE_HOME/backups/appinfo"
 umask 077
+mkdir -p "$CONFIG_DIR" "$LAUNCHER_DIR" "$STATE_HOME/backups/appinfo"
 STAMP=$(/bin/date +%Y%m%d-%H%M%S).$$
 APPINFO_BACKUP="$STATE_HOME/backups/appinfo/$APP_ID-$STAMP.vdf"
 APPINFO_TMP="$APPINFO.tmp.$$"
@@ -292,6 +292,7 @@ rollback() {
 trap rollback EXIT HUP INT TERM
 
 cp -p "$APPINFO" "$APPINFO_BACKUP"
+chmod 600 "$APPINFO_BACKUP"
 cp -p "$APPINFO" "$APPINFO_TMP"
 
 if [ -f "$STATE_FILE" ]; then
