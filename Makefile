@@ -21,6 +21,7 @@ check:
 	@$(PYTHON3) tests/test_cloud_path.py
 	@$(PYTHON3) -m py_compile bin/ullage-cloud-sync.py
 	@$(PYTHON3) tests/test_cloud_sync.py
+	@$(PYTHON3) -m py_compile bin/ullage-cloud-sync.py
 	@node --check bin/ullage-cloud-cdp.mjs
 
 clean:

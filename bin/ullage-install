@@ -37,6 +37,7 @@ Options:
   --preserve-steam-transport  retain Steam's launch dylibs and IPC descriptors (default)
   --clean-steam-transport     close inherited Steam descriptors and skip overlay injection
   --cloud-sync-command CMD    optional pre/post launch Cloud adapter command
+  --cloud-cdp                  use native Steam CEF session for Cloud reads
   --cloud-steam3-account-id ID Steam3 account ID for the Cloud adapter
   --cloud-wine-user NAME       Wine user directory for the Cloud adapter
   --cloud-steamid64 ID         64-bit SteamID for Cloud path templates
@@ -63,6 +64,7 @@ WINEMSYNC_VALUE=${WINEMSYNC:-1}
 LEGACY_STEAM=0
 PRESERVE_STEAM_TRANSPORT=1
 CLOUD_SYNC_COMMAND=${CLOUD_SYNC_COMMAND:-}
+CLOUD_CDP=${CLOUD_CDP:-0}
 CLOUD_STEAM3_ACCOUNT_ID=${CLOUD_STEAM3_ACCOUNT_ID:-}
 CLOUD_STEAMID64=${CLOUD_STEAMID64:-}
 CLOUD_WINE_USER=${CLOUD_WINE_USER:-${USER:-}}
@@ -87,6 +89,7 @@ while [ "$#" -gt 0 ]; do
         --preserve-steam-transport) PRESERVE_STEAM_TRANSPORT=1; shift ;;
         --clean-steam-transport) PRESERVE_STEAM_TRANSPORT=0; shift ;;
         --cloud-sync-command) [ "$#" -ge 2 ] || die "--cloud-sync-command requires a value"; CLOUD_SYNC_COMMAND=$2; shift 2 ;;
+        --cloud-cdp) CLOUD_CDP=1; shift ;;
         --cloud-steam3-account-id) [ "$#" -ge 2 ] || die "--cloud-steam3-account-id requires a value"; CLOUD_STEAM3_ACCOUNT_ID=$2; shift 2 ;;
         --cloud-wine-user) [ "$#" -ge 2 ] || die "--cloud-wine-user requires a value"; CLOUD_WINE_USER=$2; shift 2 ;;
         --cloud-steamid64) [ "$#" -ge 2 ] || die "--cloud-steamid64 requires a value"; CLOUD_STEAMID64=$2; shift 2 ;;
@@ -257,6 +260,7 @@ fi
     printf 'LEGACY_STEAM=%s\n' "$(shell_quote "$LEGACY_STEAM")"
     printf 'PRESERVE_STEAM_TRANSPORT=%s\n' "$(shell_quote "$PRESERVE_STEAM_TRANSPORT")"
     printf 'CLOUD_SYNC_COMMAND=%s\n' "$(shell_quote "$CLOUD_SYNC_COMMAND")"
+    printf 'CLOUD_CDP=%s\n' "$(shell_quote "$CLOUD_CDP")"
     printf 'CLOUD_STEAM3_ACCOUNT_ID=%s\n' "$(shell_quote "$CLOUD_STEAM3_ACCOUNT_ID")"
     printf 'CLOUD_STEAMID64=%s\n' "$(shell_quote "$CLOUD_STEAMID64")"
     printf 'CLOUD_WINE_USER=%s\n' "$(shell_quote "$CLOUD_WINE_USER")"

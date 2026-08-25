@@ -136,6 +136,10 @@ keeps credentials out of generated appinfo and lets one reusable hook invoke
 `--upload` after exit. Upload is explicit local-wins behavior and should not be
 enabled until the title's conflict policy is understood.
 
+For a Steam client started with `-cef-enable-debugging`, add `--cloud-cdp` to
+use the native authenticated CEF session for pre-launch downloads. CDP mode is
+read/download-only; post-exit upload is skipped rather than falsely reported.
+
 For games whose Windows executable is nested below the install root (for
 example, `windows/Game.exe`), set `--game-dir` to the Steam install directory,
 not the nested executable directory. Steam resolves the patched launch entry

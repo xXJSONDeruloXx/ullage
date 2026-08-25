@@ -4,10 +4,13 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 
-[ -n "${ULLAGE_STEAM_ACCESS_TOKEN:-}" ] || {
-    printf '%s\n' 'ullage-cloud-hook: ULLAGE_STEAM_ACCESS_TOKEN is required' >&2
-    exit 2
-}
+CDP_MODE=${ULLAGE_CLOUD_CDP:-0}
+if [ "$CDP_MODE" != 1 ]; then
+    [ -n "${ULLAGE_STEAM_ACCESS_TOKEN:-}" ] || {
+        printf '%s\n' 'ullage-cloud-hook: ULLAGE_STEAM_ACCESS_TOKEN is required' >&2
+        exit 2
+    }
+fi
 [ -n "${ULLAGE_STEAM3_ACCOUNT_ID:-}" ] || {
     printf '%s\n' 'ullage-cloud-hook: ULLAGE_STEAM3_ACCOUNT_ID is required' >&2
     exit 2
@@ -29,8 +32,17 @@ if [ -n "${ULLAGE_STEAMID64:-}" ]; then
 fi
 
 case "$ULLAGE_CLOUD_PHASE" in
-    pre) set -- "$@" --download ;;
-    post) set -- "$@" --upload ;;
+    pre)
+        set -- "$@" --download
+        [ "$CDP_MODE" = 1 ] && set -- "$@" --cdp
+        ;;
+    post)
+        if [ "$CDP_MODE" = 1 ]; then
+            printf '%s\n' 'ullage-cloud-hook: CDP mode is read/download only; skipping upload' >&2
+            exit 0
+        fi
+        set -- "$@" --upload
+        ;;
     *) printf 'ullage-cloud-hook: unknown phase: %s\n' "$ULLAGE_CLOUD_PHASE" >&2; exit 2 ;;
 esac
 

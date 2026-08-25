@@ -11,6 +11,8 @@ import argparse
 import json
 import os
 import sys
+import subprocess
+import base64
 import urllib.parse
 import urllib.request
 import hashlib
@@ -75,6 +77,27 @@ def enumerate_files(appid, token):
     return payload.get("response", payload).get("files", [])
 
 
+def enumerate_cdp_files(appid, include_data=False):
+    provider = ROOT / "ullage-cloud-cdp.mjs"
+    result = subprocess.run(
+        ["node", str(provider), str(appid)] + (["--include-data"] if include_data else []),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    files = []
+    for item in payload.get("files", []):
+        files.append({
+            "filename": f"%{item.get('folder', '')}%{item.get('name', '')}".replace("\\", "/"),
+            "url": item.get("url", ""),
+            "file_sha": "",
+            "file_size": None,
+            "data": item.get("data"),
+        })
+    return files
+
+
 def safe_destination(prefix, user, filename, patterns, steam3_id, steamid64):
     normalized = filename.replace("\\", "/")
     for pattern in patterns:
@@ -105,21 +128,28 @@ def sha1(filename):
     return digest.hexdigest()
 
 
-def download_file(url, destination, expected_sha, expected_size):
+def download_file(url, destination, expected_sha, expected_size, encoded_data=None):
     """Download atomically and verify the Cloud metadata before replacement."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.name}.ullage-download")
     digest = hashlib.sha1()
     total = 0
     try:
-        with urllib.request.urlopen(url, timeout=60) as source, temporary.open("wb") as target:
-            while True:
-                block = source.read(1024 * 1024)
-                if not block:
-                    break
-                target.write(block)
-                digest.update(block)
-                total += len(block)
+        if encoded_data is not None:
+            payload = base64.b64decode(encoded_data)
+            with temporary.open("wb") as target:
+                target.write(payload)
+            digest.update(payload)
+            total = len(payload)
+        else:
+            with urllib.request.urlopen(url, timeout=60) as source, temporary.open("wb") as target:
+                while True:
+                    block = source.read(1024 * 1024)
+                    if not block:
+                        break
+                    target.write(block)
+                    digest.update(block)
+                    total += len(block)
         if expected_size is not None and total != int(expected_size):
             raise RuntimeError(f"Cloud download size mismatch for {destination}: {total} != {expected_size}")
         if expected_sha and digest.hexdigest().lower() != expected_sha.lower():
@@ -198,16 +228,20 @@ def main():
     parser.add_argument("--steamid64", help="64-bit SteamID for {64BitSteamID} paths (defaults to Steam3 ID)")
     parser.add_argument("--download", action="store_true", help="write matching cloud files into the prefix")
     parser.add_argument("--upload", action="store_true", help="upload changed local files (local-wins; explicit opt-in)")
+    parser.add_argument("--cdp", action="store_true", help="read Cloud files from native Steam's CEF session")
     args = parser.parse_args()
     token = os.environ.get("ULLAGE_STEAM_ACCESS_TOKEN", "").strip()
-    if not token:
+    if args.upload and args.cdp:
+        print("ullage-cloud-sync: CDP mode is read/download only", file=sys.stderr)
+        return 2
+    if not token and not args.cdp:
         print("ullage-cloud-sync: set ULLAGE_STEAM_ACCESS_TOKEN (read_cloud scope)", file=sys.stderr)
         return 2
 
     appinfo = APPINFO.AppInfo(args.appinfo)
     steamid64 = args.steamid64 or args.steam3_account_id
     patterns = cloud_patterns(appinfo, args.appid)
-    files = enumerate_files(args.appid, token)
+    files = enumerate_cdp_files(args.appid, include_data=args.download) if args.cdp else enumerate_files(args.appid, token)
     matched = 0
     for item in files:
         destination = safe_destination(args.prefix, args.user, item.get("filename", ""), patterns, args.steam3_account_id, steamid64)
@@ -222,6 +256,7 @@ def main():
                 destination,
                 item.get("file_sha", ""),
                 item.get("file_size"),
+                item.get("data"),
             )
     print(f"matched={matched}")
     if args.upload:
