@@ -114,6 +114,9 @@ prefix-owned helper left behind.
 
 ## Cloud interpretation
 
+The focused native-save evidence ledger, including the supported root table
+and remaining TODOs, is in [`native-saves.md`](native-saves.md).
+
 For native Auto-Cloud, the relevant proof is the prefix path being the path
 Steam itself watches. Steam documents that Auto-Cloud synchronizes before and
 after sessions and that cross-platform behavior depends on root overrides; see

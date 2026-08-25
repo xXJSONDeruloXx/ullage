@@ -258,6 +258,11 @@ Older generated configs may still contain the removed `CLOUD_*` assignments;
 the bridge ignores those inert values, while external scripts using the
 removed command-line options must migrate to `--cloud-native`.
 
+The supported-root evidence ledger and remaining native-save TODOs are in
+[`docs/native-saves.md`](docs/native-saves.md). It distinguishes unit-tested
+root coverage from live title acceptance and does not treat native Steam's
+badge as proof that every game writes the expected save.
+
 A fresh Katamari setup was validated from a clean appinfo baseline with a new
 state directory: native Steam displayed “Your Steam Cloud files are
 synchronized for this app,” its local `remotecache.vdf` contained both save
