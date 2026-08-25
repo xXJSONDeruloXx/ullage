@@ -223,6 +223,8 @@ To restore the native launch entry, quit Steam and run:
 * Steam's native AppID and user/session context.
 * Native Steam loader and overlay environment.
 * Inherited Steam IPC descriptors when transport preservation is enabled.
+* Steam virtual-gamepad metadata, including Proton's
+  `SteamVirtualGamepadInfo_Proton` fallback.
 * Native Steam's process add/update/remove lifecycle.
 * The original Windows depot files and their verification surface.
 * A bounded, prefix-scoped cleanup path for Wine infrastructure processes.
@@ -234,12 +236,14 @@ Windows titles in the local experiment, including visible rendering and native
 overlay attachment on some renderer paths. That is evidence for the boundary,
 not a universal compatibility claim.
 
-Steam Cloud root resolution is proven for three Windows-only titles, and a
+Steam Cloud root resolution is proven for four Windows-only titles, and a
 reversible changed-file upload round trip is proven through the native path for
-RACCOIN. Full DRM certification, controller coverage, conflict policy, and all
-Unity/D3DMetal window paths still need per-title acceptance tests. The bridge
-records Steamworks transport and lifecycle evidence, but it does not claim
-that every game renderer, DRM scheme, or cloud implementation works.
+RACCOIN. Steam's virtual-gamepad handoff is live-verified, but physical
+controller behavior is not yet tested on this host. Full DRM certification,
+conflict policy, and all Unity/D3DMetal window paths still need per-title
+acceptance tests. The bridge records Steamworks transport and lifecycle
+evidence, but it does not claim that every game renderer, DRM scheme, or cloud
+implementation works.
 
 The next work belongs above this small core: runtime discovery, renderer
 profiles, cloud verification, arm64-native Wine, and recovery when Steam
