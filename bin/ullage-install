@@ -37,6 +37,8 @@ Options:
   --wine-dllpath PATHS        optional colon-separated Wine DLL search path
   --gptk-root PATH            Game Porting Toolkit runtime root
   --bridge-root PATH          lsteamclient artifact root
+  --steamclient64-forwarder PATH
+                              optional canonical-name Steam client forwarder
   --log PATH                  append Wine output here
   --wine-debug VALUE          WINEDEBUG value (default: -all)
   --winemsync VALUE           WINEMSYNC value (default: 1)
@@ -72,6 +74,7 @@ WINE_ROOT="${WINE_ROOT:-}"
 WINE_DLLPATH_VALUE="${WINE_DLLPATH:-}"
 GPTK_ROOT="${GPTK_ROOT:-}"
 BRIDGE_ROOT="${BRIDGE_ROOT:-$REPO_ROOT/runtime/lsteamclient}"
+STEAMCLIENT64_FORWARDER="${STEAMCLIENT64_FORWARDER:-}"
 LOG_FILE=
 WINE_DEBUG_VALUE=${WINEDEBUG:--all}
 WINEMSYNC_VALUE=${WINEMSYNC:-1}
@@ -103,6 +106,7 @@ while [ "$#" -gt 0 ]; do
         --wine-dllpath) [ "$#" -ge 2 ] || die "--wine-dllpath requires a value"; WINE_DLLPATH_VALUE=$2; shift 2 ;;
         --gptk-root) [ "$#" -ge 2 ] || die "--gptk-root requires a path"; GPTK_ROOT=$2; shift 2 ;;
         --bridge-root) [ "$#" -ge 2 ] || die "--bridge-root requires a path"; BRIDGE_ROOT=$2; shift 2 ;;
+        --steamclient64-forwarder) [ "$#" -ge 2 ] || die "--steamclient64-forwarder requires a path"; STEAMCLIENT64_FORWARDER=$2; shift 2 ;;
         --log) [ "$#" -ge 2 ] || die "--log requires a path"; LOG_FILE=$2; shift 2 ;;
         --wine-debug) [ "$#" -ge 2 ] || die "--wine-debug requires a value"; WINE_DEBUG_VALUE=$2; shift 2 ;;
         --winemsync) [ "$#" -ge 2 ] || die "--winemsync requires a value"; WINEMSYNC_VALUE=$2; shift 2 ;;
@@ -207,6 +211,9 @@ else
     [ -f "$BRIDGE_ROOT/i386-windows/lsteamclient.dll" ] ||
         die "32-bit Windows lsteamclient is missing under: $BRIDGE_ROOT"
 fi
+if [ -z "$STEAMCLIENT64_FORWARDER" ]; then
+    STEAMCLIENT64_FORWARDER="$BRIDGE_ROOT/x86_64-windows/steamclient64.dll"
+fi
 
 if [ -z "$PREFIX" ]; then
     PREFIX="${WINEPREFIX:-$STATE_HOME/compatdata/$APP_ID/pfx}"
@@ -219,6 +226,15 @@ if [ "$LEGACY_STEAM" = 1 ]; then
         [ -f "$LEGACY_STEAM_DIR/$legacy_file" ] ||
             die "legacy Steam DLL is missing: $LEGACY_STEAM_DIR/$legacy_file"
     done
+fi
+if [ "$ARCH" = win64 ] && [ -f "$STEAMCLIENT64_FORWARDER" ]; then
+    STEAMCLIENT64_TARGET="$PREFIX/drive_c/Program Files (x86)/Steam/steamclient64.dll"
+    [ -f "$STEAMCLIENT64_TARGET" ] ||
+        die "64-bit Steam client forwarder is not staged: $STEAMCLIENT64_TARGET"
+    [ ! -L "$STEAMCLIENT64_TARGET" ] ||
+        die "64-bit Steam client target must not be a symlink: $STEAMCLIENT64_TARGET"
+    cmp -s "$STEAMCLIENT64_FORWARDER" "$STEAMCLIENT64_TARGET" ||
+        die "staged steamclient64.dll does not match: $STEAMCLIENT64_TARGET"
 fi
 if [ -z "$LOG_FILE" ]; then
     LOG_FILE="$STATE_HOME/logs/$APP_ID.log"
@@ -318,6 +334,7 @@ fi
     printf 'WINEDLLPATH_VALUE=%s\n' "$(shell_quote "$WINE_DLLPATH_VALUE")"
     printf 'GPTK_ROOT=%s\n' "$(shell_quote "$GPTK_ROOT")"
     printf 'BRIDGE_ROOT=%s\n' "$(shell_quote "$BRIDGE_ROOT")"
+    printf 'STEAMCLIENT64_FORWARDER=%s\n' "$(shell_quote "$STEAMCLIENT64_FORWARDER")"
     printf 'FD_EXEC=%s\n' "$(shell_quote "$SCRIPT_DIR/ullage-fd-exec")"
     printf 'LOG_FILE=%s\n' "$(shell_quote "$LOG_FILE")"
     printf 'LEGACY_STEAM=%s\n' "$(shell_quote "$LEGACY_STEAM")"

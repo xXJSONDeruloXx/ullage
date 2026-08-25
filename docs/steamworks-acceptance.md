@@ -36,7 +36,7 @@ the acceptance criterion.
 | 8400 | Geometry Wars: Retro Evolved | P | P historically; latest repeats F | I | not configured | P | 32-bit path and overlay were visible in an earlier run; repeatability is an open renderer issue. |
 | 3480 | Peggle Deluxe | P | P | I; overlay observed | not configured | P | Strongest 32-bit legacy control; native Stop cleanup passed. |
 | 584400 | Sonic Mania | P | P | I; native lsteamclient observed | P | P | Mixed-root Cloud mapping and a changed-file round trip were observed. |
-| 848350 | Katamari Damacy REROLL | P | F (black surface) | I | P (2 files) | P | Good Cloud/transport test; renderer remains blocked, but native Stop cleanup passed. |
+| 848350 | Katamari Damacy REROLL | P | P (forwarder staged) | P (x64 probe + native Play) | P (2 files) | P | Canonical-name `steamclient64.dll` forwarder removed the shared x64 SteamAPI stall; native Stop cleanup still passes. |
 | 3784030 | RACCOON: Coin Pusher Roguelike | P | F (black surface) | I | P | P | Native Cloud changed-file upload round trip passed. |
 | 1740930 | JellyCar Worlds | P | F (Unity/server failure) | I | P (22 files) | P | Cloud mapping works; game process does not reach a usable surface. |
 | 304430 | INSIDE | P | F | I | no supported Windows root | P | Fresh Play-button run reached Wine; the post-fix secondary launch stayed alive 44s with a black full-screen surface and stopped cleanly via TERM. |
@@ -53,15 +53,15 @@ session.
 
 | Feature | Current evidence | Status |
 | --- | --- | :---: |
-| `SteamAPI_Init` | Direct Katamari probe passed with the shipped 32-bit `steam_api.dll`; the shipped 64-bit `steam_api64.dll` loaded but timed out inside the current x64 lsteamclient initialization path | P (win32); F (win64) |
-| Identity (`ISteamUser::GetSteamID`) | Direct 32-bit probe returned a logged-on, nonzero SteamID; x64 cannot reach the interface because initialization times out | P (win32); F (win64) |
-| Ownership/DRM | Direct 32-bit probe returned subscribed and subscribed-to-AppID; a DRM-wrapper title is not certified | P (win32 probe); pending (DRM wrapper) |
-| Achievements/stats | Direct 32-bit probe requested current stats and enumerated 21 Katamari achievements, including state for the first entry; no controlled unlock/store/relaunch test is complete | P (read-only); pending (write path) |
-| DLC | Direct 32-bit probe called DLC enumeration and returned count 0; no DLC-content launch has been completed | P (enumeration); pending (content) |
+| `SteamAPI_Init` | Katamari's 32-bit and 64-bit API DLLs both initialized; the x64 run required the canonical-name forwarder staged at the prefix Steam path | P (win32 + win64) |
+| Identity (`ISteamUser::GetSteamID`) | Direct probes returned a logged-on, nonzero SteamID on both architectures | P (win32 + win64 probe) |
+| Ownership/DRM | Direct probes returned subscribed and subscribed-to-AppID; a DRM-wrapper title is not certified | P (win32 + win64 probe); pending (DRM wrapper) |
+| Achievements/stats | Katamari's x64 probe requested current stats and enumerated 21 achievements, including state for the first entry; no controlled unlock/store/relaunch test is complete | P (read-only); pending (write path) |
+| DLC | Katamari's x64 probe called DLC enumeration and returned count 0; no DLC-content launch has been completed | P (enumeration); pending (content) |
 | Overlay | Direct probe reported `IsOverlayEnabled=0` for Katamari; visible overlay attachment was observed with Geometry Wars, Peggle, and Sonic Mania renderer paths | P (title/renderer-specific) |
 | Playtime | Native Steam updates local playtime and App Running/App stopped transitions after bridge runs | P (client telemetry) |
 | Steam Stop | Native Steam emitted `App Running,Terminating`; the bridge routed it through its signal trap, reaped the selected prefix, and returned Peggle and Katamari to Play with no Wine/helper processes remaining | P |
-| Shutdown/relaunch | Direct 32-bit probe reached `SteamAPI_Shutdown` and a clean bridge exit; signalled Peggle and Katamari runs also cleaned up and relaunch | P (win32/boundary); F (x64 probe) |
+| Shutdown/relaunch | Direct x64 probe reached `SteamAPI_Shutdown`; native Play/Stop runs also returned Katamari to Play with no selected-prefix Wine processes remaining | P (win32 + win64/boundary) |
 
 The next feature tests should use one known-visible title for the controlled
 Steamworks probe and one Cloud title. The probe must record API-level results
@@ -84,14 +84,18 @@ x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror -o /tmp/ullage-probe64.exe tool
 i686-w64-mingw32-gcc -O2 -Wall -Wextra -Werror -o /tmp/ullage-probe32.exe tools/ullage-steamworks-probe.c
 ~~~
 
-On the current Katamari depot, the 32-bit probe returned `SteamAPI_Init`, a
-logged-on identity, matching AppID, subscription/ownership, DLC count,
-achievement enumeration, and `SteamAPI_Shutdown`. The 64-bit probe loaded the
-actual Unity plugin DLL and confirmed Steam was running, then timed out after
-`lsteamclient.CreateInterface` entered the native x64 initialization path. An
-older Unix lsteamclient build reproduced the same timeout. A prior custom
-forwarder/host experiment is excluded from this acceptance result because it
-was not the untouched Ullage bridge path.
+On the current Katamari depot, the 32-bit and 64-bit probes returned
+`SteamAPI_Init`, a logged-on identity, matching AppID, subscription/ownership,
+DLC count, achievement enumeration, and `SteamAPI_Shutdown`. The x64 run uses
+the small canonical-name forwarder described in `runtime/README.md`; the
+untouched lsteamclient image still stalls when loaded directly as
+`steamclient64.dll`. The forwarder is a runtime prerequisite, not a game or
+Steam-client modification.
+
+The native Steam Play run then rendered Katamari through the same prefix, and
+the native Stop confirmation produced an AppID-scoped `Terminating` event;
+the bridge exited with `wine_exit=143 signal_received=1`, and process
+inspection found no Katamari, Wine server, or prefix-owned helper remaining.
 
 ## Stop and cleanup boundary
 

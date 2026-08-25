@@ -100,6 +100,10 @@ runtime provenance.
    matching runtime/README.md.
 4. Native Steam's Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib.
 
+For 64-bit games, build and stage the small `steamclient64.dll` forwarder
+described in [runtime/README.md](runtime/README.md). Ullage checks the staged
+copy before launch; it does not modify the prefix in the launch hot path.
+
 Build and syntax-check the only native helper:
 
 ~~~sh
@@ -294,9 +298,10 @@ evidence, but it does not claim that every game renderer, DRM scheme, or cloud
 implementation works.
 
 The optional direct Steamworks probe passes initialization, identity,
-ownership, stats, DLC enumeration, and shutdown for Katamari's 32-bit API DLL;
-the shipped 64-bit API DLL still times out inside the current lsteamclient
-initialization path. That x64 defect remains an explicit acceptance boundary.
+ownership, stats, DLC enumeration, and shutdown for Katamari's 32-bit and
+64-bit API DLLs when the canonical-name forwarder is staged. The forwarder is
+kept outside this repository with the other Wine/Proton runtime work, and the
+bridge checks its prefix copy before launch.
 
 The next work belongs above this small core: runtime discovery, renderer
 profiles, cloud verification, arm64-native Wine, and recovery when Steam

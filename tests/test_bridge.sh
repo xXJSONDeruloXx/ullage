@@ -27,6 +27,9 @@ write_script "$TEMP_ROOT/reaper" \
 write_script "$TEMP_ROOT/file" \
     '#!/bin/sh' \
     'printf "%s\n" "PE32 executable (GUI) Intel 80386, for MS Windows"'
+write_script "$TEMP_ROOT/file64" \
+    '#!/bin/sh' \
+    'printf "%s\n" "PE32+ executable (GUI) x86-64, for MS Windows"'
 write_script "$TEMP_ROOT/wine" \
     '#!/bin/sh' \
     'printf "%s\n" started >>"$WINEPREFIX/wine-events"' \
@@ -48,6 +51,7 @@ write_script "$TEMP_ROOT/wineserver" \
 make_case() {
     name=$1
     mode=$2
+    arch=${3:-win32}
     case_root=$TEMP_ROOT/$name
     prefix=$case_root/prefix
     wine_root=$case_root/wine
@@ -58,6 +62,11 @@ make_case() {
         "$bridge_root/x86_64-unix" "$bridge_root/i386-windows" \
         "$steam_root/Steam.AppBundle/Steam/Contents/MacOS" "$steam_root/logs" \
         "$case_root/game"
+    if [ "$arch" = win64 ]; then
+        mkdir -p "$bridge_root/x86_64-windows" \
+            "$prefix/drive_c/Program Files (x86)/Steam"
+        : >"$bridge_root/x86_64-windows/lsteamclient.dll"
+    fi
     cp "$TEMP_ROOT/wine" "$wine_root/bin/wine"
     cp "$TEMP_ROOT/wineserver" "$wine_root/bin/wineserver"
     chmod 755 "$wine_root/bin/wine" "$wine_root/bin/wineserver"
@@ -76,7 +85,7 @@ make_case() {
         "GAME_EXE='$case_root/game/test.exe'" \
         "GAME_DIR='$case_root/game'" \
         "PREFIX='$prefix'" \
-        "ARCH='win32'" \
+        "ARCH='$arch'" \
         "STEAM_ROOT='$steam_root'" \
         "WINE_ROOT='$wine_root'" \
         "GPTK_ROOT='$gptk_root'" \
@@ -92,6 +101,7 @@ make_case() {
     CASE_LOG=$log
     CASE_PREFIX=$prefix
     CASE_STEAM_LOG=$steam_root/logs/content_log.txt
+    CASE_BRIDGE_ROOT=$bridge_root
 }
 
 make_case early-exit slow-exit
@@ -197,5 +207,39 @@ set -e
 grep -F 'term' "$CASE_PREFIX/wine-events" >/dev/null
 grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
 grep -F 'native Steam requested stop for appid=42' "$CASE_LOG" >/dev/null
+
+make_case x64-forwarder slow-exit win64
+printf '%s\n' forwarder >"$CASE_BRIDGE_ROOT/x86_64-windows/steamclient64.dll"
+printf '%s\n' stale >"$CASE_PREFIX/drive_c/Program Files (x86)/Steam/steamclient64.dll"
+set +e
+forwarder_error=$(
+    FILE_CMD="$TEMP_ROOT/file64" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" 2>&1
+)
+status=$?
+set -e
+[ "$status" -ne 0 ] || {
+    printf '%s\n' 'expected stale x64 forwarder to be rejected' >&2
+    exit 1
+}
+case "$forwarder_error" in
+    *'staged steamclient64.dll does not match'*) ;;
+    *)
+        printf '%s\n' "$forwarder_error" >&2
+        exit 1
+        ;;
+esac
+cp "$CASE_BRIDGE_ROOT/x86_64-windows/steamclient64.dll" \
+    "$CASE_PREFIX/drive_c/Program Files (x86)/Steam/steamclient64.dll"
+set +e
+FILE_CMD="$TEMP_ROOT/file64" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG"
+status=$?
+set -e
+[ "$status" -eq 7 ] || {
+    printf 'expected x64 forwarder case exit 7, got %s\n' "$status" >&2
+    exit 1
+}
+grep -F 'wine_exit=7 signal_received=0' "$CASE_LOG" >/dev/null
+
+echo 'steamclient64 forwarder validation: ok'
 
 echo 'bridge supervision and Steam stop: ok'

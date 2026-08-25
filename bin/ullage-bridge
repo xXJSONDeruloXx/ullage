@@ -32,6 +32,8 @@ Runtime options:
   --wine-dllpath PATHS         optional colon-separated Wine DLL search path
   --gptk-root PATH            Game Porting Toolkit runtime root
   --bridge-root PATH          directory containing lsteamclient artifacts
+  --steamclient64-forwarder PATH
+                              optional canonical-name Steam client forwarder
   --fd-exec PATH              fd-cleaning exec helper
   --reaper PATH               prefix-scoped Wine helper reaper
   --log PATH                  append Wine output here
@@ -60,6 +62,7 @@ WINE_ROOT="${WINE_ROOT:-}"
 WINE_DLLPATH_VALUE="${WINE_DLLPATH_VALUE:-${WINE_DLLPATH:-}}"
 GPTK_ROOT="${GPTK_ROOT:-}"
 BRIDGE_ROOT="${BRIDGE_ROOT:-$REPO_ROOT/runtime/lsteamclient}"
+STEAMCLIENT64_FORWARDER="${STEAMCLIENT64_FORWARDER:-}"
 FD_EXEC="${FD_EXEC:-$SCRIPT_DIR/ullage-fd-exec}"
 REAPER="${REAPER:-$SCRIPT_DIR/ullage-reap}"
 LOG_FILE=
@@ -146,6 +149,11 @@ while [ "$#" -gt 0 ]; do
         --bridge-root)
             [ "$#" -ge 2 ] || die "--bridge-root requires a path"
             BRIDGE_ROOT=$2
+            shift 2
+            ;;
+        --steamclient64-forwarder)
+            [ "$#" -ge 2 ] || die "--steamclient64-forwarder requires a path"
+            STEAMCLIENT64_FORWARDER=$2
             shift 2
             ;;
         --fd-exec)
@@ -294,6 +302,9 @@ WINESERVER="$WINE_ROOT/bin/wineserver"
 STEAM_CLIENT_DYLIB="$STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib"
 GPTK_D3DSHARED="$GPTK_ROOT/external/libd3dshared.dylib"
 HOST_LSTEAMCLIENT="$BRIDGE_ROOT/x86_64-unix/lsteamclient.so"
+if [ -z "$STEAMCLIENT64_FORWARDER" ]; then
+    STEAMCLIENT64_FORWARDER="$BRIDGE_ROOT/x86_64-windows/steamclient64.dll"
+fi
 if [ "$ARCH" = win64 ]; then
     WIN_LSTEAMCLIENT="$BRIDGE_ROOT/x86_64-windows/lsteamclient.dll"
 else
@@ -317,6 +328,16 @@ require_file "$GPTK_D3DSHARED"
 require_file "$HOST_LSTEAMCLIENT"
 require_file "$WIN_LSTEAMCLIENT"
 require_file "$PREFIX/system.reg"
+
+STEAMCLIENT64_TARGET="$PREFIX/drive_c/Program Files (x86)/Steam/steamclient64.dll"
+if [ "$ARCH" = win64 ] && [ -f "$STEAMCLIENT64_FORWARDER" ]; then
+    [ -f "$STEAMCLIENT64_TARGET" ] ||
+        die "64-bit Steam client forwarder is not staged: $STEAMCLIENT64_TARGET"
+    [ ! -L "$STEAMCLIENT64_TARGET" ] ||
+        die "64-bit Steam client target must not be a symlink: $STEAMCLIENT64_TARGET"
+    cmp -s "$STEAMCLIENT64_FORWARDER" "$STEAMCLIENT64_TARGET" ||
+        die "staged steamclient64.dll does not match: $STEAMCLIENT64_TARGET"
+fi
 if [ "$LEGACY_STEAM" = 1 ]; then
     LEGACY_STEAM_DIR="$PREFIX/drive_c/Program Files (x86)/Steam"
     for legacy_file in steam.dll steamclient.dll tier0_s.dll vstdlib_s.dll; do
@@ -335,6 +356,7 @@ if [ "$DRY_RUN" = 1 ]; then
     printf 'steam_client=%s\n' "$STEAM_CLIENT_DYLIB"
     printf 'host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf 'win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
+    printf 'steamclient64_forwarder=%s\n' "$STEAMCLIENT64_FORWARDER"
     printf 'reaper=%s\n' "$REAPER"
     printf 'wine_session_wait=%s\n' "$WINE_SESSION_WAIT"
     printf 'legacy_steam=%s\n' "$LEGACY_STEAM"
@@ -383,6 +405,7 @@ fi
     printf '[ullage-bridge] wine=%s\n' "$WINE_BIN"
     printf '[ullage-bridge] host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf '[ullage-bridge] win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
+    printf '[ullage-bridge] steamclient64_forwarder=%s\n' "$STEAMCLIENT64_FORWARDER"
     printf '[ullage-bridge] preserve_steam_transport=%s\n' "$PRESERVE_STEAM_TRANSPORT"
     printf '[ullage-bridge] steam_stop_watch=%s\n' "$STEAM_STOP_WATCH"
     printf '[ullage-bridge] steam_virtual_gamepad_metadata=%s\n' "$STEAM_VIRTUAL_GAMEPAD_PRESENT"
