@@ -167,6 +167,10 @@ rewrite its local appinfo cache during a metadata refresh, so the install
 operation is intentionally repeatable rather than pretending this is a server
 metadata change.
 
+This native path is the normal mode and should not be paired with the optional
+CDP lifecycle hook. When native Cloud is active, no browser page or per-file
+fallback downloader is involved in Play, launch, or exit synchronization.
+
 For a Steam client started with `-cef-enable-debugging`, add `--cloud-cdp` to
 use the native authenticated CEF session for pre-launch Cloud metadata. Steam
 mints short-lived signed CDN links in that page; Ullage streams those links
@@ -216,8 +220,9 @@ Windows titles in the local experiment, including visible rendering and native
 overlay attachment on some renderer paths. That is evidence for the boundary,
 not a universal compatibility claim.
 
-Steam Cloud root resolution is proven for three Windows-only titles, while full
-DRM certification, changed-save upload tests, controller coverage, and all
+Steam Cloud root resolution is proven for three Windows-only titles, and a
+reversible changed-file upload round trip is proven through the native path for
+RACCOIN. Full DRM certification, controller coverage, conflict policy, and all
 Unity/D3DMetal window paths still need per-title acceptance tests. The bridge
 records Steamworks transport and lifecycle evidence, but it does not claim
 that every game renderer, DRM scheme, or cloud implementation works.
