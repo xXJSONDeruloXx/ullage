@@ -430,6 +430,8 @@ wait_and_reap() {
         printf '[ullage-bridge] reaper failed for prefix=%s\n' "$PREFIX" >>"$LOG_FILE"
     run_cloud_sync post ||
         printf '[ullage-bridge] cloud post-sync failed for appid=%s\n' "$APP_ID" >>"$LOG_FILE"
+    printf '[ullage-bridge] wine_exit=%s signal_received=%s\n' \
+        "$wine_exit" "$SIGNAL_RECEIVED" >>"$LOG_FILE"
     return "$wine_exit"
 }
 
