@@ -160,7 +160,7 @@ def upload_files(appid, token, prefix, user, patterns, steam3_id, remote):
             print(f"uploaded={cloud_name}")
         succeeded = True
     finally:
-        post_json("CompleteAppUploadBatch", {"appid": appid, "upload_batch_id": batch_id, "batch_result": 1 if succeeded else 2}, token)
+        post_json("CompleteAppUploadBatch", {"appid": appid, "batch_id": batch_id, "batch_eresult": 1 if succeeded else 2}, token)
 
 
 def main():
