@@ -7,6 +7,7 @@ BRIDGE_HOME=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 BRIDGE="$SCRIPT_DIR/ullage-bridge"
 APPINFO_TOOL="$SCRIPT_DIR/ullage-appinfo.py"
 PATH_TOOL="$SCRIPT_DIR/ullage-path.py"
+CLOUD_NATIVE_TOOL="$SCRIPT_DIR/ullage-cloud-native.py"
 HOME_VALUE=${HOME:-/tmp}
 STATE_HOME=${ULLAGE_STATE_DIR:-$HOME_VALUE/.ullage}
 
@@ -45,6 +46,10 @@ Options:
   --cloud-steam3-account-id ID Steam3 account ID for the Cloud adapter
   --cloud-wine-user NAME|auto  Wine user directory for the Cloud adapter (default: auto)
   --cloud-steamid64 ID         64-bit SteamID for Cloud path templates
+  --cloud-native               map Windows UFS roots into native Steam Cloud
+  --cloud-native-platform NAME platform in the local override (default: Windows)
+  --cloud-native-base PATH     MacAppSupport base (default: ~/Library/Application Support)
+  --cloud-native-addpath-root NAME  relative root under MacAppSupport (default: Ullage)
   --force                     replace an existing external mapping
   --help
 
@@ -73,6 +78,10 @@ CLOUD_CDP=${CLOUD_CDP:-0}
 CLOUD_STEAM3_ACCOUNT_ID=${CLOUD_STEAM3_ACCOUNT_ID:-}
 CLOUD_STEAMID64=${CLOUD_STEAMID64:-}
 CLOUD_WINE_USER=${CLOUD_WINE_USER:-auto}
+CLOUD_NATIVE=0
+CLOUD_NATIVE_PLATFORM=${CLOUD_NATIVE_PLATFORM:-Windows}
+CLOUD_NATIVE_BASE=${CLOUD_NATIVE_BASE:-$HOME_VALUE/Library/Application Support}
+CLOUD_NATIVE_ADDPATH_ROOT=${CLOUD_NATIVE_ADDPATH_ROOT:-Ullage}
 FORCE=0
 
 while [ "$#" -gt 0 ]; do
@@ -100,6 +109,10 @@ while [ "$#" -gt 0 ]; do
         --cloud-steam3-account-id) [ "$#" -ge 2 ] || die "--cloud-steam3-account-id requires a value"; CLOUD_STEAM3_ACCOUNT_ID=$2; shift 2 ;;
         --cloud-wine-user) [ "$#" -ge 2 ] || die "--cloud-wine-user requires a value"; CLOUD_WINE_USER=$2; shift 2 ;;
         --cloud-steamid64) [ "$#" -ge 2 ] || die "--cloud-steamid64 requires a value"; CLOUD_STEAMID64=$2; shift 2 ;;
+        --cloud-native) CLOUD_NATIVE=1; shift ;;
+        --cloud-native-platform) [ "$#" -ge 2 ] || die "--cloud-native-platform requires a value"; CLOUD_NATIVE_PLATFORM=$2; shift 2 ;;
+        --cloud-native-base) [ "$#" -ge 2 ] || die "--cloud-native-base requires a path"; CLOUD_NATIVE_BASE=$2; shift 2 ;;
+        --cloud-native-addpath-root) [ "$#" -ge 2 ] || die "--cloud-native-addpath-root requires a value"; CLOUD_NATIVE_ADDPATH_ROOT=$2; shift 2 ;;
         --force) FORCE=1; shift ;;
         --help|-h) usage; exit 0 ;;
         *) die "unknown option: $1" ;;
@@ -112,6 +125,7 @@ case "$APP_ID" in *[!0-9]*|'') die "AppID must be numeric: $APP_ID" ;; esac
 [ -x "$BRIDGE" ] || die "bridge is missing or not executable: $BRIDGE"
 [ -x "$SCRIPT_DIR/ullage-fd-exec" ] || die "fd helper is missing or not executable: $SCRIPT_DIR/ullage-fd-exec"
 [ -x "$APPINFO_TOOL" ] || die "appinfo editor is missing or not executable: $APPINFO_TOOL"
+[ "$CLOUD_NATIVE" -ne 1 ] || [ -r "$CLOUD_NATIVE_TOOL" ] || die "native Cloud helper is missing: $CLOUD_NATIVE_TOOL"
 [ -r "$PATH_TOOL" ] || die "path helper is missing: $PATH_TOOL"
 PYTHON3_VALUE=${PYTHON3:-python3}
 PYTHON3_BIN=$(command -v "$PYTHON3_VALUE" 2>/dev/null || true)
@@ -203,6 +217,7 @@ APPINFO="$STEAM_ROOT/appcache/appinfo.vdf"
 CONFIG_DIR="$STATE_HOME/config/games"
 CONFIG_FILE="$CONFIG_DIR/$APP_ID.conf"
 STATE_FILE="$CONFIG_DIR/$APP_ID.launch.json"
+CLOUD_STATE_FILE="$CONFIG_DIR/$APP_ID.cloud.json"
 LAUNCHER_DIR="$STATE_HOME/launchers"
 LAUNCHER="$LAUNCHER_DIR/$APP_ID.sh"
 TARGET_NAME=$(basename "$TARGET")
@@ -213,6 +228,9 @@ for existing_file in "$CONFIG_FILE" "$STATE_FILE" "$LAUNCHER"; do
         die "generated file exists (use --force): $existing_file"
     fi
 done
+if [ "$CLOUD_NATIVE" -eq 1 ] && [ -e "$CLOUD_STATE_FILE" ] && [ "$FORCE" -ne 1 ]; then
+    die "native Cloud state exists (use ullage-remove first or --force): $CLOUD_STATE_FILE"
+fi
 
 mkdir -p "$CONFIG_DIR" "$LAUNCHER_DIR" "$STATE_HOME/backups/appinfo"
 umask 077
@@ -222,10 +240,13 @@ APPINFO_TMP="$APPINFO.tmp.$$"
 CONFIG_TMP="$CONFIG_FILE.tmp.$$"
 LAUNCHER_TMP="$LAUNCHER.tmp.$$"
 STATE_TMP="$STATE_FILE.tmp.$$"
+CLOUD_STATE_TMP="$CLOUD_STATE_FILE.tmp.$$"
 CONFIG_BACKUP=
 LAUNCHER_BACKUP=
 STATE_BACKUP=
+CLOUD_STATE_BACKUP=
 APPINFO_INSTALLED=0
+CLOUD_NATIVE_APPLIED=0
 
 remove_file() {
     if [ -e "$1" ] || [ -L "$1" ]; then
@@ -236,9 +257,16 @@ remove_file() {
 rollback() {
     code=$?
     trap - EXIT HUP INT TERM
+    if [ "$CLOUD_NATIVE_APPLIED" -eq 1 ] && [ -f "$CLOUD_STATE_TMP" ]; then
+        cloud_appinfo="$APPINFO_TMP"
+        [ "$APPINFO_INSTALLED" -eq 1 ] && cloud_appinfo="$APPINFO"
+        "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" restore \
+            --appinfo "$cloud_appinfo" --state "$CLOUD_STATE_TMP" >/dev/null 2>&1 || true
+    fi
     remove_file "$CONFIG_TMP"
     remove_file "$LAUNCHER_TMP"
     remove_file "$STATE_TMP"
+    remove_file "$CLOUD_STATE_TMP"
     remove_file "$APPINFO_TMP"
     if [ "$APPINFO_INSTALLED" -eq 1 ] && [ -f "$APPINFO_BACKUP" ]; then
         cp -p "$APPINFO_BACKUP" "$APPINFO"
@@ -246,6 +274,7 @@ rollback() {
     if [ -n "$CONFIG_BACKUP" ] && [ ! -e "$CONFIG_FILE" ]; then mv "$CONFIG_BACKUP" "$CONFIG_FILE"; fi
     if [ -n "$LAUNCHER_BACKUP" ] && [ ! -e "$LAUNCHER" ]; then mv "$LAUNCHER_BACKUP" "$LAUNCHER"; fi
     if [ -n "$STATE_BACKUP" ] && [ ! -e "$STATE_FILE" ]; then mv "$STATE_BACKUP" "$STATE_FILE"; fi
+    if [ -n "$CLOUD_STATE_BACKUP" ] && [ ! -e "$CLOUD_STATE_FILE" ]; then mv "$CLOUD_STATE_BACKUP" "$CLOUD_STATE_FILE"; fi
     exit "$code"
 }
 trap rollback EXIT HUP INT TERM
@@ -256,6 +285,11 @@ cp -p "$APPINFO" "$APPINFO_TMP"
 if [ -f "$STATE_FILE" ]; then
     "$PYTHON3_BIN" "$APPINFO_TOOL" restore --appinfo "$APPINFO_TMP" --state "$STATE_FILE" ||
         die "existing launch mapping cannot be restored; remove it or use a matching appcache"
+fi
+if [ "$CLOUD_NATIVE" -eq 1 ] && [ -f "$CLOUD_STATE_FILE" ]; then
+    "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" restore \
+        --appinfo "$APPINFO_TMP" --state "$CLOUD_STATE_FILE" ||
+        die "existing native Cloud mapping cannot be restored; remove it or use a matching appcache"
 fi
 
 {
@@ -278,6 +312,10 @@ fi
     printf 'CLOUD_STEAM3_ACCOUNT_ID=%s\n' "$(shell_quote "$CLOUD_STEAM3_ACCOUNT_ID")"
     printf 'CLOUD_STEAMID64=%s\n' "$(shell_quote "$CLOUD_STEAMID64")"
     printf 'CLOUD_WINE_USER=%s\n' "$(shell_quote "$CLOUD_WINE_USER")"
+    printf 'CLOUD_NATIVE=%s\n' "$(shell_quote "$CLOUD_NATIVE")"
+    printf 'CLOUD_NATIVE_PLATFORM=%s\n' "$(shell_quote "$CLOUD_NATIVE_PLATFORM")"
+    printf 'CLOUD_NATIVE_BASE=%s\n' "$(shell_quote "$CLOUD_NATIVE_BASE")"
+    printf 'CLOUD_NATIVE_ADDPATH_ROOT=%s\n' "$(shell_quote "$CLOUD_NATIVE_ADDPATH_ROOT")"
     printf 'WINE_DEBUG_VALUE=%s\n' "$(shell_quote "$WINE_DEBUG_VALUE")"
     printf 'WINEMSYNC_VALUE=%s\n' "$(shell_quote "$WINEMSYNC_VALUE")"
 } >"$CONFIG_TMP"
@@ -297,6 +335,18 @@ chmod 755 "$LAUNCHER_TMP"
     --match "$TARGET_NAME" \
     --replace "$LAUNCH_REL" \
     --state-out "$STATE_TMP"
+if [ "$CLOUD_NATIVE" -eq 1 ]; then
+    "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" install \
+        --appinfo "$APPINFO_TMP" \
+        --appid "$APP_ID" \
+        --prefix "$PREFIX" \
+        --user "$CLOUD_WINE_USER" \
+        --native-base "$CLOUD_NATIVE_BASE" \
+        --addpath-root "$CLOUD_NATIVE_ADDPATH_ROOT" \
+        --platform "$CLOUD_NATIVE_PLATFORM" \
+        --state-out "$CLOUD_STATE_TMP"
+    CLOUD_NATIVE_APPLIED=1
+fi
 mv "$APPINFO_TMP" "$APPINFO"
 APPINFO_INSTALLED=1
 
@@ -312,9 +362,16 @@ if [ -e "$STATE_FILE" ]; then
     STATE_BACKUP="$STATE_FILE.backup.$STAMP"
     mv "$STATE_FILE" "$STATE_BACKUP"
 fi
+if [ "$CLOUD_NATIVE" -eq 1 ] && [ -e "$CLOUD_STATE_FILE" ]; then
+    CLOUD_STATE_BACKUP="$CLOUD_STATE_FILE.backup.$STAMP"
+    mv "$CLOUD_STATE_FILE" "$CLOUD_STATE_BACKUP"
+fi
 mv "$CONFIG_TMP" "$CONFIG_FILE"
 mv "$LAUNCHER_TMP" "$LAUNCHER"
 mv "$STATE_TMP" "$STATE_FILE"
+if [ "$CLOUD_NATIVE" -eq 1 ]; then
+    mv "$CLOUD_STATE_TMP" "$CLOUD_STATE_FILE"
+fi
 trap - EXIT HUP INT TERM
 
 printf 'installed AppID %s\n' "$APP_ID"

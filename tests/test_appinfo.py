@@ -44,23 +44,33 @@ def encode_v29_dict(value, pool):
     return bytes(output)
 
 
-def make_appinfo(version, executable="Game.exe"):
-    sections = {
-        "appinfo": {
-            "config": {
-                "launch": {
-                    "0": {"executable": executable},
+def make_appinfo(version, executable="Game.exe", sections=None):
+    if sections is None:
+        sections = {
+            "appinfo": {
+                "config": {
+                    "launch": {
+                        "0": {"executable": executable},
+                    }
                 }
             }
         }
-    }
     if version == MODULE.APPINFO_28:
         encoded = encode_v28_dict(sections)
         offset = 16
         prefix = struct.pack("<Q", version) + b"\0" * 8
         pool = b""
     else:
-        pool = ["appinfo", "config", "launch", "0", "executable"]
+        pool = []
+
+        def collect_keys(value):
+            for key, item in value.items():
+                if key not in pool:
+                    pool.append(key)
+                if isinstance(item, dict):
+                    collect_keys(item)
+
+        collect_keys(sections)
         encoded = encode_v29_dict(sections, pool)
         offset = 16 + 68 + len(encoded) + 68
         prefix = struct.pack("<Qq", version, offset)

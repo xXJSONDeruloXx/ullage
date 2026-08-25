@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Synchronize Windows Auto Cloud files into an Ullage Wine prefix.
 
-For Windows-only games without a published macOS root override, the native
-macOS Steam client cannot resolve Windows UFS roots.  This tool uses Steam's
-documented ICloudService read path and the prefix resolver, while leaving
-Steam's appinfo and launcher state untouched.  Upload support is intentionally
-not enabled until conflict handling is proven.
+For Windows-only games whose native Steam UFS root has not been mapped, this is
+the fallback transfer path. It uses Steam's Cloud API or the authenticated CEF
+session and the prefix resolver, while leaving Steam's appinfo and launcher
+state untouched. Native root overrides are preferred because they let Steam
+own both transfer directions and the client badge.
 """
 
 import argparse
@@ -16,6 +16,7 @@ import subprocess
 import base64
 import urllib.parse
 import urllib.request
+import urllib.error
 import hashlib
 import re
 from pathlib import Path
@@ -133,11 +134,69 @@ def enumerate_cdp_files(appid, include_data=False):
         files.append({
             "filename": f"%{item.get('folder', '')}%{item.get('name', '')}".replace("\\", "/"),
             "url": item.get("url", ""),
+            "size": item.get("size", ""),
+            "timestamp": item.get("timestamp", ""),
             "file_sha": "",
             "file_size": None,
             "data": item.get("data"),
         })
     return files
+
+
+def cloud_cache_path(appid, explicit=None):
+    if explicit:
+        return Path(explicit).expanduser() / f"{appid}.json"
+    state_home = os.environ.get("ULLAGE_STATE_HOME") or os.environ.get("ULLAGE_STATE_DIR")
+    if not state_home:
+        state_home = str(Path.home() / ".ullage")
+    return Path(state_home).expanduser() / "cloud" / f"{appid}.json"
+
+
+def load_cloud_cache(filename):
+    try:
+        with Path(filename).open(encoding="utf-8") as stream:
+            payload = json.load(stream)
+        if payload.get("version") != 1 or not isinstance(payload.get("files"), dict):
+            return {"version": 1, "files": {}}
+        return payload
+    except (OSError, ValueError, TypeError):
+        return {"version": 1, "files": {}}
+
+
+def save_cloud_cache(filename, payload):
+    filename = Path(filename)
+    filename.parent.mkdir(parents=True, exist_ok=True)
+    temporary = filename.with_name(f".{filename.name}.ullage-tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+        temporary.replace(filename)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def remote_cache_identity(item):
+    """Return stable remote metadata without persisting signed URLs."""
+    return {
+        "sha": str(item.get("file_sha") or ""),
+        "size": str(item.get("file_size") if item.get("file_size") is not None else item.get("size") or ""),
+        "timestamp": str(item.get("timestamp") or item.get("time") or ""),
+    }
+
+
+def cache_hit(item, destination, cache_entry):
+    if not destination.is_file() or not isinstance(cache_entry, dict):
+        return False
+    identity = remote_cache_identity(item)
+    if any(identity[key] != cache_entry.get(key, "") for key in ("size", "timestamp")):
+        return False
+    remote_sha = identity["sha"]
+    if remote_sha and remote_sha.lower() != cache_entry.get("sha", "").lower():
+        return False
+    local_sha = cache_entry.get("local_sha")
+    return bool(local_sha) and sha1(destination) == local_sha.lower()
 
 
 def safe_destination(prefix, user, filename, patterns, steam3_id, steamid64):
@@ -283,6 +342,7 @@ def main():
     parser.add_argument("--download", action="store_true", help="write matching cloud files into the prefix")
     parser.add_argument("--upload", action="store_true", help="upload changed local files (local-wins; explicit opt-in)")
     parser.add_argument("--cdp", action="store_true", help="read Cloud files from native Steam's CEF session")
+    parser.add_argument("--cache-dir", help="Cloud metadata cache directory (default: ~/.ullage/cloud)")
     args = parser.parse_args()
     token = os.environ.get("ULLAGE_STEAM_ACCESS_TOKEN", "").strip()
     if args.upload and args.cdp:
@@ -296,17 +356,31 @@ def main():
     steamid64 = args.steamid64 or steamid64_for_account(args.steam3_account_id)
     wine_user = resolve_wine_user(args.prefix, args.user)
     patterns = cloud_patterns(appinfo, args.appid)
-    files = enumerate_cdp_files(args.appid, include_data=args.download) if args.cdp else enumerate_files(args.appid, token)
+    files = enumerate_cdp_files(args.appid, include_data=False) if args.cdp else enumerate_files(args.appid, token)
+    cache_filename = cloud_cache_path(args.appid, args.cache_dir)
+    cache = load_cloud_cache(cache_filename) if args.download else {"version": 1, "files": {}}
     matched = 0
+    cached = 0
+    pending = []
     print(f"wine_user={wine_user}")
     for item in files:
         destination = safe_destination(args.prefix, wine_user, item.get("filename", ""), patterns, args.steam3_account_id, steamid64)
         if destination is None:
             continue
         matched += 1
-        print(f"file={item.get('filename')} sha={item.get('file_sha', '')} destination={destination}")
+        filename = item.get("filename", "")
+        entry = cache["files"].get(filename)
+        if args.download and cache_hit(item, destination, entry):
+            cached += 1
+            print(f"cached={filename} destination={destination}")
+            continue
+        print(f"file={filename} sha={item.get('file_sha', '')} destination={destination}")
         if args.download:
-            destination.parent.mkdir(parents=True, exist_ok=True)
+            pending.append((item, destination))
+
+    refreshed = None
+    for item, destination in pending:
+        try:
             download_file(
                 item["url"],
                 destination,
@@ -314,7 +388,34 @@ def main():
                 item.get("file_size"),
                 item.get("data"),
             )
+        except urllib.error.HTTPError:
+            if not args.cdp:
+                raise
+            if refreshed is None:
+                refreshed = {
+                    fresh.get("filename"): fresh
+                    for fresh in enumerate_cdp_files(args.appid, include_data=False)
+                }
+            fresh = refreshed.get(item.get("filename"))
+            if not fresh or not fresh.get("url"):
+                raise
+            item = fresh
+            download_file(
+                item["url"],
+                destination,
+                item.get("file_sha", ""),
+                item.get("file_size"),
+                item.get("data"),
+            )
+        cache["files"][item["filename"]] = {
+            **remote_cache_identity(item),
+            "local_sha": sha1(destination),
+        }
+    if args.download:
+        save_cloud_cache(cache_filename, cache)
     print(f"matched={matched}")
+    if args.download:
+        print(f"cached={cached} downloaded={len(pending)}")
     if args.upload:
         upload_files(args.appid, token, args.prefix, wine_user, patterns, args.steam3_account_id, steamid64, files)
     return 0

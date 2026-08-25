@@ -58,4 +58,18 @@ with tempfile.TemporaryDirectory() as temporary:
         raise AssertionError("invalid Cloud SHA was accepted")
     assert destination.read_bytes() == b"old"
 
+with tempfile.TemporaryDirectory() as temporary:
+    destination = Path(temporary) / "save.dat"
+    payload = b"cached Cloud payload"
+    destination.write_bytes(payload)
+    remote = {"size": "19 B", "timestamp": "today", "file_sha": ""}
+    entry = {
+        **MODULE.remote_cache_identity(remote),
+        "local_sha": MODULE.sha1(destination),
+    }
+    assert MODULE.cache_hit(remote, destination, entry)
+    assert not MODULE.cache_hit({**remote, "timestamp": "tomorrow"}, destination, entry)
+    destination.write_bytes(b"changed")
+    assert not MODULE.cache_hit(remote, destination, entry)
+
 print("cloud transfer integrity: ok")

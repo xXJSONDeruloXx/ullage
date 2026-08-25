@@ -195,6 +195,40 @@ class AppInfo:
                 )
         return bytes(output)
 
+    def rewrite_record(self, appid):
+        """Re-encode one app record after a structured section edit."""
+        try:
+            record = self.records[appid]
+        except KeyError as exc:
+            raise AppInfoError(f"AppID {appid} is not present in appinfo.vdf") from exc
+
+        encoded_sections = self._encode_dict(record.sections)
+        header = dict(record.header)
+        header["size"] = len(encoded_sections) + struct.calcsize("<4IQ20sI20s") - 8
+        header["checksum_text"] = hashlib.sha1(self._dict_to_text(record.sections)).digest()
+        header["checksum_binary"] = hashlib.sha1(encoded_sections).digest()
+        encoded_header = struct.pack(
+            "<4IQ20sI20s",
+            header["appid"],
+            header["size"],
+            header["state"],
+            header["last_update"],
+            header["access_token"],
+            header["checksum_text"],
+            header["change_number"],
+            header["checksum_binary"],
+        )
+        replacement = encoded_header + encoded_sections
+        old_string_offset = self.string_offset
+        self.data[record.start:record.end] = replacement
+        if self.version == APPINFO_29:
+            new_string_offset = old_string_offset + len(replacement) - (record.end - record.start)
+            additions = self.pool[self.pool_count:]
+            if additions:
+                self.data.extend(b"".join(self._encode_string(item) for item in additions))
+            struct.pack_into("<q", self.data, 8, new_string_offset)
+            struct.pack_into("<I", self.data, new_string_offset, len(self.pool))
+
     def replace_launch(self, appid, executable, match=None, entry=None, expect=None):
         try:
             record = self.records[appid]
@@ -230,33 +264,7 @@ class AppInfo:
                 f"launch entry {selected} changed unexpectedly: {current!r} != {expect!r}"
             )
         launch[selected]["executable"] = executable
-
-        encoded_sections = self._encode_dict(record.sections)
-        header = dict(record.header)
-        header["size"] = len(encoded_sections) + struct.calcsize("<4IQ20sI20s") - 8
-        header["checksum_text"] = hashlib.sha1(self._dict_to_text(record.sections)).digest()
-        header["checksum_binary"] = hashlib.sha1(encoded_sections).digest()
-        encoded_header = struct.pack(
-            "<4IQ20sI20s",
-            header["appid"],
-            header["size"],
-            header["state"],
-            header["last_update"],
-            header["access_token"],
-            header["checksum_text"],
-            header["change_number"],
-            header["checksum_binary"],
-        )
-        replacement = encoded_header + encoded_sections
-        old_string_offset = self.string_offset
-        self.data[record.start:record.end] = replacement
-        if self.version == APPINFO_29:
-            new_string_offset = old_string_offset + len(replacement) - (record.end - record.start)
-            additions = self.pool[self.pool_count:]
-            if additions:
-                self.data.extend(b"".join(self._encode_string(item) for item in additions))
-            struct.pack_into("<q", self.data, 8, new_string_offset)
-            struct.pack_into("<I", self.data, new_string_offset, len(self.pool))
+        self.rewrite_record(appid)
         return selected, current
 
     def write(self, filename):

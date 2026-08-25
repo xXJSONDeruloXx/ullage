@@ -5,6 +5,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 BRIDGE_HOME=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 APPINFO_TOOL="$SCRIPT_DIR/ullage-appinfo.py"
+CLOUD_NATIVE_TOOL="$SCRIPT_DIR/ullage-cloud-native.py"
 HOME_VALUE=${HOME:-/tmp}
 STATE_HOME=${ULLAGE_STATE_DIR:-$HOME_VALUE/.ullage}
 
@@ -40,11 +41,15 @@ STEAM_PIDS=$(/usr/bin/pgrep -x steam_osx 2>/dev/null || true)
 
 CONFIG_DIR="$STATE_HOME/config/games"
 STATE_FILE="$CONFIG_DIR/$APP_ID.launch.json"
+CLOUD_STATE_FILE="$CONFIG_DIR/$APP_ID.cloud.json"
 LAUNCHER="$STATE_HOME/launchers/$APP_ID.sh"
 CONFIG_FILE="$CONFIG_DIR/$APP_ID.conf"
 APPINFO="$STEAM_ROOT/appcache/appinfo.vdf"
 [ -f "$STATE_FILE" ] || die "launch mapping state is missing: $STATE_FILE"
 [ -f "$APPINFO" ] || die "Steam appinfo cache is missing: $APPINFO"
+if [ -f "$CLOUD_STATE_FILE" ]; then
+    [ -r "$CLOUD_NATIVE_TOOL" ] || die "native Cloud helper is missing: $CLOUD_NATIVE_TOOL"
+fi
 
 STAMP=$(/bin/date +%Y%m%d-%H%M%S).$$
 BACKUP_DIR="$STATE_HOME/backups/appinfo"
@@ -68,11 +73,16 @@ rollback() {
 trap rollback EXIT HUP INT TERM
 
 "$PYTHON3_BIN" "$APPINFO_TOOL" restore --appinfo "$APPINFO_TMP" --state "$STATE_FILE"
+if [ -f "$CLOUD_STATE_FILE" ]; then
+    "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" restore \
+        --appinfo "$APPINFO_TMP" --state "$CLOUD_STATE_FILE"
+fi
 mv "$APPINFO_TMP" "$APPINFO"
 
 if [ -e "$LAUNCHER" ]; then mv "$LAUNCHER" "$LAUNCHER.bridge-backup.$STAMP"; fi
 if [ -e "$CONFIG_FILE" ]; then mv "$CONFIG_FILE" "$CONFIG_FILE.bridge-backup.$STAMP"; fi
 mv "$STATE_FILE" "$STATE_FILE.bridge-backup.$STAMP"
+if [ -e "$CLOUD_STATE_FILE" ]; then mv "$CLOUD_STATE_FILE" "$CLOUD_STATE_FILE.bridge-backup.$STAMP"; fi
 trap - EXIT HUP INT TERM
 
 printf 'restored AppID %s\n' "$APP_ID"

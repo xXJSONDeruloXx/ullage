@@ -3,10 +3,6 @@
 // Steam must be started with -cef-enable-debugging; no cookies or tokens are
 // extracted or persisted.
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
 const appid = process.argv[2];
 const includeData = process.argv.includes("--include-data");
 if (!/^[0-9]+$/.test(appid || "")) {
@@ -51,40 +47,6 @@ function command(method, params = {}) {
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function downloadName(item) {
-  return `%${item.folder}%${item.name}`.replace(/[\\/]/g, "_");
-}
-
-async function waitForDownload(directory, before, expectedName) {
-  const deadline = Date.now() + 60000;
-  let previousPath = "";
-  let previousSize = -1;
-  let stableReads = 0;
-  while (Date.now() < deadline) {
-    const newCandidates = fs.readdirSync(directory)
-      .filter((name) => !before.has(name) && !name.endsWith(".crdownload"));
-    const candidates = fs.existsSync(path.join(directory, expectedName))
-      ? [expectedName]
-      : newCandidates.length === 1 ? newCandidates : [];
-    if (candidates.length === 1) {
-      const candidate = path.join(directory, candidates[0]);
-      const stat = fs.statSync(candidate);
-      if (stat.isFile()) {
-        if (candidate === previousPath && stat.size === previousSize) {
-          stableReads += 1;
-        } else {
-          previousPath = candidate;
-          previousSize = stat.size;
-          stableReads = 0;
-        }
-        if (stableReads >= 2) return candidate;
-      }
-    }
-    await sleep(100);
-  }
-  throw new Error(`Steam Cloud download did not finish within 60 seconds: ${expectedName}`);
 }
 
 const cloudUrl = `https://store.steampowered.com/account/remotestorageapp/?appid=${appid}`;
@@ -134,36 +96,18 @@ const files = await command("Runtime.evaluate", {
   returnByValue: true,
   awaitPromise: true,
 });
-const downloadDirectory = includeData
-  ? fs.mkdtempSync(path.join(os.tmpdir(), "ullage-cloud-"))
-  : null;
 try {
   if (includeData && files.length) {
-    await command("Page.setDownloadBehavior", {
-      behavior: "allow",
-      downloadPath: downloadDirectory,
-    });
     for (const item of files) {
-      // filedownload links are short-lived; refresh the row immediately before
-      // navigation so a large Cloud set does not leave the last entries stale.
-      await command("Page.navigate", { url: cloudUrl });
-      await waitForCloudTable();
-      const folder = JSON.stringify(item.folder);
-      const name = JSON.stringify(item.name);
-      item.url = await command("Runtime.evaluate", {
-        expression: `(() => { for (const row of document.querySelectorAll('.accountTable tr')) {
-          const cells = row.querySelectorAll('td');
-          if (cells.length >= 4 && cells[0].textContent.trim() === ${folder} &&
-              cells[1].textContent.trim() === ${name})
-            return row.querySelector('a[href*="ugc"], a[href*="filedownload"], a[href*="steamusercontent"]')?.href || '';
-        } return ''; })()`,
-        returnByValue: true,
-      });
       if (!item.url) throw new Error(`Steam Cloud file has no download URL: ${item.name}`);
-      const before = new Set(fs.readdirSync(downloadDirectory));
-      await command("Page.navigate", { url: item.url });
-      const downloaded = await waitForDownload(downloadDirectory, before, downloadName(item));
-      item.data = fs.readFileSync(downloaded).toString("base64");
+      // The authenticated page mints a short-lived signed CDN URL. The URL
+      // itself is sufficient for the transfer, so do not navigate the Steam
+      // browser for every file or leave browser download artifacts behind.
+      const fileResponse = await fetch(item.url);
+      if (!fileResponse.ok) {
+        throw new Error(`Steam Cloud signed download failed for ${item.name}: HTTP ${fileResponse.status}`);
+      }
+      item.data = Buffer.from(await fileResponse.arrayBuffer()).toString("base64");
     }
   }
 } finally {
@@ -171,6 +115,5 @@ try {
   // leave a Steam browser window covering the game launched underneath it.
   await command("Page.close").catch(() => {});
   socket.close();
-  if (downloadDirectory) fs.rmSync(downloadDirectory, { recursive: true, force: true });
 }
 process.stdout.write(`${JSON.stringify({ appid: Number(appid), files })}\n`);
