@@ -126,6 +126,11 @@ done
 [ -n "$TARGET" ] || die "missing --target"
 case "$APP_ID" in *[!0-9]*|'') die "AppID must be numeric: $APP_ID" ;; esac
 [ -z "$LAUNCH_ENTRY" ] || case "$LAUNCH_ENTRY" in *[!0-9]*|'') die "launch entry must be numeric: $LAUNCH_ENTRY" ;; esac
+if [ "$CLOUD_NATIVE" -eq 1 ] && {
+    [ "$CLOUD_CDP" -eq 1 ] || [ -n "$CLOUD_SYNC_COMMAND" ];
+}; then
+    die "--cloud-native cannot be combined with --cloud-cdp or --cloud-sync-command"
+fi
 [ -x "$BRIDGE" ] || die "bridge is missing or not executable: $BRIDGE"
 [ -x "$SCRIPT_DIR/ullage-fd-exec" ] || die "fd helper is missing or not executable: $SCRIPT_DIR/ullage-fd-exec"
 [ -x "$APPINFO_TOOL" ] || die "appinfo editor is missing or not executable: $APPINFO_TOOL"

@@ -14,6 +14,7 @@ check:
 	for script in bin/ullage-bridge bin/ullage-install bin/ullage-remove bin/ullage-reap bin/ullage-cloud-hook; do \
 		sh -n "$$script"; \
 	done
+	@sh tests/test_install_options.sh
 	@$(PYTHON3) -m py_compile bin/ullage-appinfo.py
 	@$(PYTHON3) -m py_compile bin/ullage-path.py
 	@$(PYTHON3) bin/ullage-appinfo.py --help >/dev/null

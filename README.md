@@ -177,6 +177,9 @@ Cloud transfer and conflict behavior.
 This native path is the normal mode and should not be paired with the optional
 CDP lifecycle hook. When native Cloud is active, no browser page or per-file
 fallback downloader is involved in Play, launch, or exit synchronization.
+The installer rejects `--cloud-native` combined with `--cloud-cdp` or
+`--cloud-sync-command` so a native mapping cannot silently fall back to a
+second Cloud transport.
 
 For a Steam client started with `-cef-enable-debugging`, add `--cloud-cdp` to
 use the native authenticated CEF session for pre-launch Cloud metadata. Steam
