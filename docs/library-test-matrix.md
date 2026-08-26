@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **61**.
-* Remaining to the 30% target: **96**.
+* Unique AppIDs tested in this run: **63**.
+* Remaining to the 30% target: **94**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -108,6 +108,9 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 413410 | Danganronpa: Trigger Happy Havoc | win32 | P | P | P | P | Freshly downloaded 3.0 GB 32-bit depot. Steam warned that macOS cannot run 32-bit games, but the Launcher.exe path opened a visible title/Video Options surface through the i386 lsteamclient path. `--cloud-native` mapped the app's `gameinstall` root and the native Cloud icon was checked; Stop and Steam uninstall completed cleanly. |
 | 403430 | ARCADE GAME SERIES: GALAGA | win64 | P | P | P | P | Freshly downloaded 763 MB Unity depot after accepting its EULA. The native Play path rendered the GALAGA title/notice surface; native Stop returned to Play and reaped the session, and Steam uninstall plus idempotent Ullage removal completed cleanly. `--cloud-native` mapped `WinAppDataRoaming`. |
 
+| 15710 | Oddworld: Abe's Exoddus | win32 | P | P | P | P | Freshly downloaded 634 MB 32-bit DirectDraw depot. Wine 11.0's builtin DirectDraw rejected the game's 640x480x8 mode; a title-local `cnc-ddraw` wrapper selected with `--wine-dll-overrides 'ddraw=n,b;lsteamclient=b'` rendered the intro/menu. Native Stop, relaunch, and cleanup were clean. The wrapper remains an external host asset, not an Ullage dependency. |
+| 8380 | Strong Bad Episode 5: 8-Bit Is Enough | win32 | P | P | P | P | Freshly downloaded 177 MB / 185 MB installed Windows-only depot. The 32-bit Telltale title/start surface rendered after its slow splash; native Stop returned cleanly and Steam uninstall plus Ullage removal restored `Homestar105.exe`. |
+
 ## Per-title evidence
 
 The bridge log and Steam content log are the authoritative lifecycle artifacts.
@@ -169,6 +172,9 @@ transcribed here.
 | 425410 | `~/.ullage/logs/425410-ballhalla.log`; default and editor runs logged `args=0`, native Steam stop requests, and `wine_exit=143 signal_received=1`; the default run reaped eight helper PIDs and the editor left no residual processes | `22:10:42` default App Running; `22:13:32` Terminating and `22:13:35` fully stopped; `22:14:35` editor App Running; `22:17:44` Terminating and `22:17:47` fully stopped; `22:18:34` Uninstalling and Uninstalled; desktop captures showed the Road to Ballhalla splash and editor surface; filtered chooser contained only installed entries |
 | 1507530 | `~/.ullage/logs/1507530-stellar-mess.log`; `native Steam requested stop`; `reaped_helper_pids=none`; `reaped_game_pids=none`; `wine_exit=143 signal_received=1` | `22:25:02` App Running; `22:26:13` Terminating; `22:26:15` fully stopped; `22:27:06` Uninstalled; desktop capture showed the rendered language-selection surface; no Cloud mapping was needed |
 | 1448030 | `~/.ullage/logs/1448030-press-any-button.log`; baseline exited `wine_exit=3 signal_received=0`; two DXMT-overlay runs logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | `22:55:24` and `22:57:36` Play requests; desktop captures showed the rendered blue game surface and Steam overlay; both native Stop cycles returned to Play with no residual processes |
+
+| 15710 | `~/.ullage/logs/15710-oddworld-abes-exoddus.log`; configured runs logged `wine_dll_overrides=ddraw=n,b;lsteamclient=b`, `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Fresh desktop capture showed the rendered Oddworld intro/menu with the native overlay; a second Play request reached Running again. Both native Stop confirmations returned the page to Play with no selected-prefix Wine/game processes; the 634 MB depot was uninstalled and Ullage restored `Exoddus.exe`. |
+| 8380 | `~/.ullage/logs/8380-strongbad-episode5.log`; `native Steam requested stop`; `reaped_helper_pids=38780 38785 38791 38804 38807 38839 38881`; `reaped_game_pids=none`; `wine_exit=143 signal_received=1` | Native Steam showed App Running; the desktop capture showed the rendered Strong Bad Episode 5 title/start surface. Stop returned the page to Play with no residual Wine/game processes, Steam removed the 177 MB depot, and Ullage restored the original Windows launch entry. |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every
