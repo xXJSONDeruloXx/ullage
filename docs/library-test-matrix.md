@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **67**.
-* Remaining to the 30% target: **90**.
+* Unique AppIDs tested in this run: **68**.
+* Remaining to the 30% target: **89**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -115,6 +115,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 1880620 | Once Upon A KATAMARI | win64 | P | F | P | P | Freshly downloaded 2.7 GB x64 Unity depot with `WinAppDataLocal` Cloud metadata. Native Play reached Running, but the Wine-owned `Application load error 3:0000065432` appeared before `GameAssembly.dll` or the game's `steam_api64.dll` loaded; adding/removing `steam_appid.txt` did not change the result. Native Stop/relaunch remained clean, and the direct Steamworks probe passed initialization, identity, ownership, and DLC enumeration. This is currently a title/runtime startup boundary, not an Ullage launch, mapping, or supervision defect. |
 | 858710 | Gravity Circuit | win64 | P | P | P | P | Freshly downloaded 311 MB nested `win64_steam` depot with `WinAppDataRoaming` Cloud metadata. Native Steam showed the checked Cloud state; the mapped language-selection screen rendered with the native overlay attached. Two native Play/Stop cycles returned to Play, and Steam uninstall plus Ullage removal restored the original launch and removed the owned Cloud link. |
 | 4182710 | Dustin Sunset | win64 | P | P | P | P | Freshly downloaded 294 MB flat x64 Unity depot with no Auto-Cloud entries. Native Play reached the rendered title surface with `gameoverlayui` attached; two native Play/confirmed-Stop cycles returned to Play, and Steam uninstall plus Ullage removal restored the original launch. |
+| 403400 | ARCADE GAME SERIES: DIG DUG | win64 | P | P | P | P | Freshly downloaded 763 MB Windows-only x64 Unity depot with `WinAppDataRoaming` Cloud metadata. Native Play reached the rendered auto-save caution surface with `gameoverlayui` attached; native Stop returned to Play with no selected-prefix helpers. Steam uninstall removed the depot and Ullage removal restored the original appinfo launch entry and removed its mapping state. |
 
 ## Per-title evidence
 
@@ -184,6 +185,7 @@ transcribed here.
 | 1880620 | `~/.ullage/logs/1880620-once-upon-a-katamari.log`; repeated runs logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Native Play reached Running twice. Full desktop captures showed the Wine `Steam Error` dialog with `Application load error 3:0000065432`; loader tracing stopped before `GameAssembly.dll` and `steam_api64.dll`. Native Stop returned to Play with no selected-prefix Wine/game processes. A direct staged API probe initialized successfully and matched AppID 1880620, but it is not a game-session acceptance result. |
 | 858710 | `~/.ullage/logs/858710-gravity-circuit.log`; two runs each logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | First desktop capture showed the rendered language-selection surface with `gameoverlayui` attached. Both native Stop confirmations returned the page to Play; Steam uninstalled the 311 MB depot and Ullage restored `win64_steam/GravityCircuit.exe` with no selected-prefix Wine/game processes left. |
 | 4182710 | `~/.ullage/logs/4182710-dustin-sunset.log`; two runs logged `native Steam requested stop`, `reaped_helper_pids=...`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Fresh Steam Play reached the full rendered Dustin Sunset title surface with `gameoverlayui` attached. Both native Stop confirmations returned the page to Play; Steam removed the 294 MB depot and Ullage restored `Dustin Sunset.exe` with no selected-prefix Wine/game processes left. |
+| 403400 | `~/.ullage/logs/403400-dig-dug.log`; `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Native Play reached Running; the desktop capture showed the rendered DIG DUG auto-save caution surface. Stop returned the page to Play with no selected-prefix Wine/game processes. Steam removed the 763 MB depot; Ullage removed the mapping state and restored the original launch entry (the uninstalled depot itself is intentionally absent). |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every
