@@ -267,7 +267,7 @@ class AppInfo:
         self.rewrite_record(appid)
         return selected, current
 
-    def windows_launches(self, appid):
+    def windows_launches(self, appid, install_dir=None):
         """Return executable launch entries that belong to the Windows depot."""
         try:
             app = self.records[appid].sections["appinfo"]
@@ -291,6 +291,13 @@ class AppInfo:
                 value.strip().lower() for value in str(oslist).split(",")
             }:
                 continue
+            if install_dir is not None:
+                normalized = executable.replace("\\", "/")
+                if os.path.isabs(normalized):
+                    continue
+                candidate = os.path.join(install_dir, normalized)
+                if not os.path.isfile(candidate) or os.path.islink(candidate):
+                    continue
             workingdir = item.get("workingdir", "")
             result.append(
                 {
@@ -424,11 +431,13 @@ def main():
     patch_all.add_argument("--appid", required=True, type=int)
     patch_all.add_argument("--replace-template", required=True)
     patch_all.add_argument("--launcher-template")
+    patch_all.add_argument("--install-dir")
     patch_all.add_argument("--state-out", required=True)
 
     list_windows = subparsers.add_parser("list-windows")
     list_windows.add_argument("--appinfo", required=True)
     list_windows.add_argument("--appid", required=True, type=int)
+    list_windows.add_argument("--install-dir")
 
     restore = subparsers.add_parser("restore")
     restore.add_argument("--state", required=True)
@@ -466,7 +475,7 @@ def main():
             print(f"installed={args.replace}")
         elif args.operation == "patch-all":
             appinfo = AppInfo(args.appinfo)
-            launches = appinfo.windows_launches(args.appid)
+            launches = appinfo.windows_launches(args.appid, args.install_dir)
             replacements = [
                 (item["entry"], args.replace_template.format(entry=item["entry"]))
                 for item in launches
@@ -491,7 +500,7 @@ def main():
             print(f"entries={len(entries)}")
         elif args.operation == "list-windows":
             appinfo = AppInfo(args.appinfo)
-            for item in appinfo.windows_launches(args.appid):
+            for item in appinfo.windows_launches(args.appid, args.install_dir):
                 executable = item["executable"].replace("\\", "/")
                 workingdir = item["workingdir"].replace("\\", "/")
                 print(f"{item['entry']}\t{executable}\t{workingdir}")

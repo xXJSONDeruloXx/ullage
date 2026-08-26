@@ -56,11 +56,13 @@ directory. For a nested executable such as `windows/Game.exe`, keep
 calculated relative to the depot root.
 
 Without `--launch-entry`, Ullage maps every Windows `.exe` launch option in
-the appinfo record to a small entry-specific launcher. That keeps Steam's
-native option chooser intact while allowing options that select a different
-executable or working directory. Use `--launch-entry KEY` when a title's
-launcher is not a direct Windows PE executable or when only one option should
-be redirected.
+the appinfo record whose executable is present in the installed depot to a
+small entry-specific launcher. That keeps Steam's native option chooser intact
+while allowing options that select a different executable or working
+directory. Optional entries advertised by Steam but absent from the installed
+depot are left untouched. Use `--launch-entry KEY` when a title's launcher is
+not a direct Windows PE executable or when only one option should be
+redirected.
 
 Use these options only when needed:
 

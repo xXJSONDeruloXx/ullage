@@ -166,6 +166,11 @@ def main():
             appinfo = MODULE.AppInfo(filename)
             launches = appinfo.windows_launches(42)
             assert [item["entry"] for item in launches] == ["0", "1"]
+            root = Path(directory) / "game"
+            root.mkdir()
+            (root / "Game.exe").write_bytes(b"pe")
+            existing = appinfo.windows_launches(42, root)
+            assert [item["entry"] for item in existing] == ["0"]
             changed = appinfo.replace_launches(
                 42, [("0", "shim-0.sh"), ("1", "shim-1.sh")]
             )

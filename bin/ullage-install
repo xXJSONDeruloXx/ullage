@@ -368,7 +368,8 @@ if [ -n "$LAUNCH_ENTRY" ]; then
     make_launcher "$LAUNCHER" "$LAUNCHER_TMP" "$TARGET" "$GAME_DIR" "$ARCH"
 elif [ -n "$TARGET_NAME" ]; then
     "$PYTHON3_BIN" "$APPINFO_TOOL" list-windows \
-        --appinfo "$APPINFO_TMP" --appid "$APP_ID" >"$SPECS_TMP"
+        --appinfo "$APPINFO_TMP" --appid "$APP_ID" \
+        --install-dir "$INSTALL_DIR" >"$SPECS_TMP"
     ENTRY_COUNT=$(wc -l <"$SPECS_TMP" | tr -d '[:space:]')
     [ "$ENTRY_COUNT" -gt 0 ] || die "no Windows launch entries found for AppID $APP_ID"
     if [ "$ENTRY_COUNT" -eq 1 ]; then
@@ -444,6 +445,7 @@ if [ "$MULTI_LAUNCH" -eq 1 ]; then
     "$PYTHON3_BIN" "$APPINFO_TOOL" patch-all \
         --appinfo "$APPINFO_TMP" \
         --appid "$APP_ID" \
+        --install-dir "$INSTALL_DIR" \
         --replace-template "$LAUNCH_REL_TEMPLATE" \
         --launcher-template "$LAUNCHER_DIR/$APP_ID-entry-{entry}.sh" \
         --state-out "$STATE_TMP"
