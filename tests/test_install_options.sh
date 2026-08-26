@@ -37,6 +37,14 @@ case "$BRIDGE_HELP" in
     *) printf '%s\n' 'bridge missing --wine-dllpath' >&2; exit 1 ;;
 esac
 case "$INSTALL_HELP" in
+    *"--wine-dll-overrides VALUE"*) ;;
+    *) printf '%s\n' 'installer missing --wine-dll-overrides' >&2; exit 1 ;;
+esac
+case "$BRIDGE_HELP" in
+    *"--wine-dll-overrides VALUE"*) ;;
+    *) printf '%s\n' 'bridge missing --wine-dll-overrides' >&2; exit 1 ;;
+esac
+case "$INSTALL_HELP" in
     *"--steamclient64-forwarder PATH"*) ;;
     *) printf '%s\n' 'installer missing --steamclient64-forwarder' >&2; exit 1 ;;
 esac

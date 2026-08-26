@@ -68,6 +68,9 @@ Use these options only when needed:
 
 * `--arch win32` or `--arch win64` overrides PE detection.
 * `--wine-dllpath` supplies an alternate colon-separated Wine/D3D library path.
+* `--wine-dll-overrides` persists a per-AppID `WINEDLLOVERRIDES` value. Use it
+  when a title-local native DLL, such as a DirectDraw compatibility wrapper,
+  must replace a Wine builtin; the DLL itself remains outside Ullage.
 * `--legacy-steam` selects the older Steam DLL set in a prepared prefix.
 * `--clean-steam-transport` disables descriptor preservation for a title-specific
   diagnostic.

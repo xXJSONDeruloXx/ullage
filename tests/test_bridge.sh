@@ -43,6 +43,7 @@ write_script "$TEMP_ROOT/wine" \
     '#!/bin/sh' \
     'printf "%s\n" started >>"$WINEPREFIX/wine-events"' \
     'printf "%s\n" "dllpath=$WINEDLLPATH" >>"$WINEPREFIX/wine-events"' \
+    'printf "%s\n" "dlloverrides=$WINEDLLOVERRIDES" >>"$WINEPREFIX/wine-events"' \
     'mode=$(cat "$WINEPREFIX/wine-mode")' \
     'case "$mode" in' \
     '  slow-exit) /bin/sleep 1; exit 7 ;;' \
@@ -142,9 +143,11 @@ grep -F -- '-w:' "$CASE_PREFIX/wineserver-events" >/dev/null
 
 make_case dllpath slow-exit
 mkdir "$CASE_PREFIX/override"
+printf '%s\n' "WINEDLLOVERRIDES_VALUE='config-value'" >>"$CASE_CONFIG"
 set +e
 FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" \
-    --wine-dllpath "$CASE_PREFIX/override"
+    --wine-dllpath "$CASE_PREFIX/override" \
+    --wine-dll-overrides 'ddraw=n,b;lsteamclient=b'
 status=$?
 set -e
 [ "$status" -eq 7 ] || {
@@ -152,6 +155,7 @@ set -e
     exit 1
 }
 grep -F "dllpath=$CASE_PREFIX/override" "$CASE_PREFIX/wine-events" >/dev/null
+grep -F 'dlloverrides=ddraw=n,b;lsteamclient=b' "$CASE_PREFIX/wine-events" >/dev/null
 
 make_case signal term-hang
 set +e

@@ -30,6 +30,7 @@ Runtime options:
   --steam-root PATH           native Steam library root
   --wine-root PATH             GameHub Wine installation root
   --wine-dllpath PATHS         optional colon-separated Wine DLL search path
+  --wine-dll-overrides VALUE   optional WINEDLLOVERRIDES value
   --gptk-root PATH            Game Porting Toolkit runtime root
   --bridge-root PATH          directory containing lsteamclient artifacts
   --steamclient64-forwarder PATH
@@ -132,6 +133,11 @@ while [ "$#" -gt 0 ]; do
         --wine-dllpath)
             [ "$#" -ge 2 ] || die "--wine-dllpath requires a value"
             WINE_DLLPATH_VALUE=$2
+            shift 2
+            ;;
+        --wine-dll-overrides)
+            [ "$#" -ge 2 ] || die "--wine-dll-overrides requires a value"
+            WINEDLLOVERRIDES_VALUE=$2
             shift 2
             ;;
         --gptk-root)
@@ -347,7 +353,7 @@ if [ -z "$WINE_DLLPATH_VALUE" ] && [ -n "${WINEDLLPATH_VALUE:-}" ]; then
 fi
 WINEDLLPATH_VALUE=${WINE_DLLPATH_VALUE:-$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine}
 DYLD_FALLBACK_LIBRARY_PATH_VALUE=${DYLD_FALLBACK_LIBRARY_PATH_VALUE:-$GPTK_ROOT/external:$WINE_ROOT/lib:$WINE_ROOT/lib/wine/x86_64-unix}
-WINEDLLOVERRIDES_VALUE=${WINEDLLOVERRIDES_VALUE:-lsteamclient=b}
+WINEDLLOVERRIDES_VALUE=${WINEDLLOVERRIDES_VALUE:-${WINEDLLOVERRIDES:-lsteamclient=b}}
 STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS"
 
 # Native Steam uses these values to bootstrap its macOS loader/overlay and
@@ -383,6 +389,7 @@ fi
     printf '[ullage-bridge] steamclient64_forwarder=%s\n' "$STEAMCLIENT64_FORWARDER"
     printf '[ullage-bridge] preserve_steam_transport=%s\n' "$PRESERVE_STEAM_TRANSPORT"
     printf '[ullage-bridge] steam_stop_watch=%s\n' "$STEAM_STOP_WATCH"
+    printf '[ullage-bridge] wine_dll_overrides=%s\n' "$WINEDLLOVERRIDES_VALUE"
     printf '[ullage-bridge] steam_virtual_gamepad_metadata=%s\n' "$STEAM_VIRTUAL_GAMEPAD_PRESENT"
 } >>"$LOG_FILE" 2>&1
 

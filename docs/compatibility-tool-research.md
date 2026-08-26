@@ -151,6 +151,22 @@ Until then, the lower-risk optimization is batching appinfo mappings while
 Steam is already stopped or automating the required restart—not live metadata
 edits.
 
+## Title-local renderer adapters
+
+The launch boundary can select a native Windows DLL for one AppID without
+changing the shared prefix. `ullage-install --wine-dll-overrides VALUE`
+persists the value in that AppID's generated config, and an explicit bridge
+argument overrides it for a diagnostic run. The DLL still has to be supplied
+in the Windows loader search path, normally the game's own directory.
+
+This was exercised with Oddworld: Abe's Exoddus (AppID 15710), whose Wine 11.0
+DirectDraw path rejected the game's requested 640x480x8 mode. The maintained
+[cnc-ddraw](https://github.com/FunkyFr3sh/cnc-ddraw) wrapper was placed in the
+title directory and selected with `ddraw=n,b;lsteamclient=b`. The native Steam
+Play path rendered the game's intro and menu, native Stop returned to Play,
+relaunch rendered again, and both runs left no Wine or game processes. The
+wrapper was a host experiment; it is not bundled or copied into Ullage.
+
 ## Sources and prior art
 
 * [Valve Proton](https://github.com/ValveSoftware/Proton)
