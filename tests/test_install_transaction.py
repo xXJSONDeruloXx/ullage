@@ -143,7 +143,13 @@ def remove(case):
     )
 
 
-def exercise(launches, expected_launchers, expected_game_dirs, expected_executables):
+def exercise(
+    launches,
+    expected_launchers,
+    expected_game_dirs,
+    expected_executables,
+    expected_disabled=(),
+):
     with tempfile.TemporaryDirectory(prefix="ullage-install-it.") as directory:
         case = make_case(Path(directory), launches)
         install(case)
@@ -151,6 +157,9 @@ def exercise(launches, expected_launchers, expected_game_dirs, expected_executab
         state_file = case["state"] / "config" / "games" / "42.launch.json"
         state = json.loads(state_file.read_text(encoding="utf-8"))
         assert [entry["entry"] for entry in state["entries"]] == expected_launchers
+        assert [entry["entry"] for entry in state.get("disabled", [])] == list(
+            expected_disabled
+        )
         for entry, game_dir, executable in zip(
             expected_launchers, expected_game_dirs, expected_executables
         ):
@@ -164,6 +173,8 @@ def exercise(launches, expected_launchers, expected_game_dirs, expected_executab
         launch = appinfo_launches(case["steam"] / "appcache" / "appinfo.vdf")
         for entry in expected_launchers:
             assert launch[entry]["executable"].endswith(f"42-entry-{entry}.sh")
+        for entry in expected_disabled:
+            assert launch[entry]["config"]["oslist"] == FIXTURE.MODULE.DISABLED_OSLIST
         for entry, item in launches["appinfo"]["config"]["launch"].items():
             assert launch[entry].get("arguments") == item.get("arguments")
         remove(case)
@@ -171,6 +182,7 @@ def exercise(launches, expected_launchers, expected_game_dirs, expected_executab
         restored = appinfo_launches(case["steam"] / "appcache" / "appinfo.vdf")
         for entry, item in launches["appinfo"]["config"]["launch"].items():
             assert restored[entry].get("executable") == item.get("executable")
+            assert restored[entry].get("config") == item.get("config")
         assert not state_file.exists()
         assert not list((case["state"] / "launchers").glob("42-entry-*.sh"))
 
@@ -198,6 +210,11 @@ def main():
                     },
                     "2": {"executable": "missing.exe", "arguments": "-oculus"},
                     "3": {"executable": "Game.app", "config": {"oslist": "macos"}},
+                    "4": {
+                        "executable": "launch_mp.bat",
+                        "arguments": "game/multi",
+                        "config": {"oslist": "windows"},
+                    },
                 }
             },
         }
@@ -207,6 +224,7 @@ def main():
         ["0", "1"],
         ["bin", "tools"],
         ["bin/Game.exe", "tools/Mode.exe"],
+        ["2", "4"],
     )
 
     single = {

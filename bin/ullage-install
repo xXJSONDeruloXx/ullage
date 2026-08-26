@@ -467,6 +467,7 @@ if [ "$MULTI_LAUNCH" -eq 1 ]; then
         --install-dir "$INSTALL_DIR" \
         --replace-template "$LAUNCH_REL_TEMPLATE" \
         --launcher-template "$LAUNCHER_DIR/$APP_ID-entry-{entry}.sh" \
+        --disable-unsupported \
         --state-out "$STATE_TMP"
 elif [ -n "$LAUNCH_ENTRY" ]; then
     "$PYTHON3_BIN" "$APPINFO_TOOL" patch \
@@ -483,6 +484,8 @@ else
         --match "$TARGET_NAME" \
         --replace "$LAUNCH_REL" \
         --launcher "$LAUNCHER" \
+        --install-dir "$INSTALL_DIR" \
+        --disable-unsupported \
         --state-out "$STATE_TMP"
 fi
 if [ "$CLOUD_NATIVE" -eq 1 ]; then

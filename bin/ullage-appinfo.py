@@ -8,6 +8,7 @@ before replacing the file on disk.
 """
 
 import argparse
+import copy
 import hashlib
 import json
 import ntpath
@@ -20,6 +21,7 @@ from pathlib import Path
 
 APPINFO_28 = 0x107564428
 APPINFO_29 = 0x107564429
+DISABLED_OSLIST = "ullage-disabled"
 
 
 class AppInfoError(Exception):
@@ -66,6 +68,7 @@ class AppInfo:
             raise AppInfoError(f"unsupported appinfo version: {self.version:#x}")
         self.pool = []
         self.pool_count = 0
+        self.last_restore_changed = False
         if self.version == APPINFO_29:
             self.string_offset = struct.unpack_from("<q", self.data, 8)[0]
             if not 16 <= self.string_offset <= len(self.data) - 4:
@@ -342,6 +345,66 @@ class AppInfo:
             raise AppInfoError(f"AppID {appid} has no Windows .exe launch entries")
         return result
 
+    def disable_unusable_windows_launches(self, appid, supported_entries):
+        """Hide Windows launch entries that Ullage cannot map.
+
+        The caller supplies the entries that have a usable Windows PE in the
+        installed depot.  Other Windows entries stay in appinfo but receive a
+        private non-platform ``oslist`` marker, so Steam does not offer a
+        launch target that would bypass Ullage or point at a missing file.
+        This edits the in-memory record; the caller should perform one final
+        ``rewrite_record`` after all launch edits are complete.
+        """
+        try:
+            app = self.records[appid].sections["appinfo"]
+            common = app.get("common", {})
+            launch = app["config"]["launch"]
+        except (KeyError, TypeError) as exc:
+            raise AppInfoError(f"AppID {appid} has no config/launch section") from exc
+
+        supported = {str(entry) for entry in supported_entries}
+        common_os = common.get("oslist") if isinstance(common, dict) else None
+        disabled = []
+        for key, item in launch.items():
+            entry = str(key)
+            if (
+                not entry.isascii()
+                or not entry.isdigit()
+                or entry in supported
+                or not isinstance(item, dict)
+                or not isinstance(item.get("executable"), str)
+            ):
+                continue
+            entry_config = item.get("config", {})
+            entry_os = (
+                entry_config.get("oslist")
+                if isinstance(entry_config, dict)
+                else None
+            )
+            oslist = entry_os if entry_os is not None else common_os
+            if oslist is not None and "windows" not in {
+                value.strip().lower() for value in str(oslist).split(",")
+            }:
+                continue
+            if "config" in item and not isinstance(item["config"], dict):
+                raise AppInfoError(
+                    f"Windows launch entry {entry} has an unsupported config value"
+                )
+            had_config = "config" in item
+            original_config = copy.deepcopy(item["config"]) if had_config else None
+            installed_config = copy.deepcopy(original_config) if had_config else {}
+            installed_config["oslist"] = DISABLED_OSLIST
+            item["config"] = installed_config
+            disabled.append(
+                {
+                    "entry": entry,
+                    "had_config": had_config,
+                    "original_config": original_config,
+                    "installed_config": installed_config,
+                }
+            )
+        return disabled
+
     def replace_launches(self, appid, replacements, expects=None):
         """Replace several launch entries in one record rewrite."""
         try:
@@ -394,6 +457,7 @@ class AppInfo:
 
     def restore_state(self, state, expected_appid=None):
         """Restore a legacy single-entry or multi-entry mapping state."""
+        self.last_restore_changed = False
         entries = state.get("entries")
         if entries is None:
             entries = [state]
@@ -440,10 +504,63 @@ class AppInfo:
                 )
             results.append((selected, current, changed, original))
 
-        if changes:
+        disabled = state.get("disabled", [])
+        if not isinstance(disabled, list):
+            raise AppInfoError("mapping state has invalid disabled launch entries")
+        disabled_changes = []
+        for item in disabled:
+            if not isinstance(item, dict):
+                raise AppInfoError("mapping state has an invalid disabled launch entry")
+            try:
+                selected = str(item["entry"])
+                had_config = item["had_config"]
+                original_config = item["original_config"]
+                installed_config = item["installed_config"]
+                launch_item = launch[selected]
+            except (KeyError, TypeError) as exc:
+                raise AppInfoError(
+                    f"disabled launch entry {item.get('entry', '?')} is not present"
+                ) from exc
+            if not isinstance(had_config, bool) or not isinstance(installed_config, dict):
+                raise AppInfoError(
+                    f"mapping state has invalid config for disabled entry {selected}"
+                )
+            if had_config and not isinstance(original_config, dict):
+                raise AppInfoError(
+                    f"mapping state has invalid original config for disabled entry {selected}"
+                )
+            if not had_config and original_config is not None:
+                raise AppInfoError(
+                    f"mapping state has invalid absent config for disabled entry {selected}"
+                )
+            current_had_config = "config" in launch_item
+            current_config = launch_item.get("config")
+            if current_had_config == had_config and (
+                not had_config or current_config == original_config
+            ):
+                changed = False
+            elif (
+                current_had_config
+                and isinstance(current_config, dict)
+                and current_config == installed_config
+            ):
+                disabled_changes.append((selected, had_config, original_config))
+                changed = True
+            else:
+                raise AppInfoError(
+                    f"disabled launch entry {selected} changed unexpectedly"
+                )
+
+        if changes or disabled_changes:
             for selected, original in changes:
                 launch[selected]["executable"] = original
+            for selected, had_config, original_config in disabled_changes:
+                if had_config:
+                    launch[selected]["config"] = copy.deepcopy(original_config)
+                else:
+                    del launch[selected]["config"]
             self.rewrite_record(appid)
+            self.last_restore_changed = True
         return results
 
     def write(self, filename):
@@ -464,6 +581,8 @@ def main():
     patch.add_argument("--expect")
     patch.add_argument("--launcher")
     patch.add_argument("--state-out")
+    patch.add_argument("--install-dir")
+    patch.add_argument("--disable-unsupported", action="store_true")
 
     patch_all = subparsers.add_parser("patch-all")
     patch_all.add_argument("--appinfo", required=True)
@@ -472,6 +591,7 @@ def main():
     patch_all.add_argument("--launcher-template")
     patch_all.add_argument("--install-dir")
     patch_all.add_argument("--state-out", required=True)
+    patch_all.add_argument("--disable-unsupported", action="store_true")
 
     list_windows = subparsers.add_parser("list-windows")
     list_windows.add_argument("--appinfo", required=True)
@@ -490,6 +610,16 @@ def main():
     try:
         if args.operation == "patch":
             appinfo = AppInfo(args.appinfo)
+            disabled = []
+            if args.disable_unsupported:
+                if not args.install_dir:
+                    raise AppInfoError(
+                        "--install-dir is required with --disable-unsupported"
+                    )
+                launches = appinfo.windows_launches(args.appid, args.install_dir)
+                disabled = appinfo.disable_unusable_windows_launches(
+                    args.appid, (item["entry"] for item in launches)
+                )
             entry, original = appinfo.replace_launch(
                 args.appid,
                 args.replace,
@@ -506,6 +636,8 @@ def main():
             }
             if args.launcher:
                 state["launcher"] = args.launcher
+            if disabled:
+                state["disabled"] = disabled
             if args.state_out:
                 with open(args.state_out, "w", encoding="utf-8") as stream:
                     json.dump(state, stream, indent=2, sort_keys=True)
@@ -516,6 +648,11 @@ def main():
         elif args.operation == "patch-all":
             appinfo = AppInfo(args.appinfo)
             launches = appinfo.windows_launches(args.appid, args.install_dir)
+            disabled = []
+            if args.disable_unsupported:
+                disabled = appinfo.disable_unusable_windows_launches(
+                    args.appid, (item["entry"] for item in launches)
+                )
             replacements = [
                 (item["entry"], args.replace_template.format(entry=item["entry"]))
                 for item in launches
@@ -534,8 +671,11 @@ def main():
                         entry=item["entry"]
                     )
                 entries.append(state_entry)
+            state = {"appid": args.appid, "entries": entries}
+            if disabled:
+                state["disabled"] = disabled
             with open(args.state_out, "w", encoding="utf-8") as stream:
-                json.dump({"appid": args.appid, "entries": entries}, stream, indent=2, sort_keys=True)
+                json.dump(state, stream, indent=2, sort_keys=True)
                 stream.write("\n")
             print(f"entries={len(entries)}")
         elif args.operation == "list-windows":
@@ -557,7 +697,7 @@ def main():
                 state = json.load(stream)
             appinfo = AppInfo(args.appinfo)
             results = appinfo.restore_state(state, expected_appid=args.appid)
-            if any(item[2] for item in results):
+            if appinfo.last_restore_changed:
                 appinfo.write(args.appinfo)
             for entry, current, changed, original in results:
                 print(f"entry={entry}")

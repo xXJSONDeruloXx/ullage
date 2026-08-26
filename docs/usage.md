@@ -70,11 +70,14 @@ Without `--launch-entry`, Ullage maps every Windows `.exe` launch option in
 the appinfo record whose executable is present in the installed depot to a
 small entry-specific launcher. That keeps Steam's native option chooser intact
 while allowing options that select a different executable or working
-directory. Optional entries advertised by Steam but absent from the installed
-depot are left untouched. Entries whose executable or working directory is
-outside the depot are also left untouched. Use `--launch-entry KEY` when a
-title's launcher is not a direct Windows PE executable or when only one option
-should be redirected.
+directory. Windows options that cannot be mapped because their target is
+missing, outside the depot, not a PE executable, or uses an unsupported path
+are kept in the record with a private `ullage-disabled` marker so Steam does
+not offer a broken native path. The original launch metadata is recorded and
+restored by `ullage-remove`. Non-Windows options are left unchanged. Use
+`--launch-entry KEY` when a title's launcher is not a direct Windows PE
+executable or when only one option should be redirected; explicit entry mode
+does not alter the other options.
 
 Use these options only when needed:
 

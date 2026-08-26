@@ -43,6 +43,16 @@ will require a user action-time acceptance before they can be exercised.
 | 455400 | PAC-MAN 256 | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
 | 1343370 | Old School RuneScape | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
 
+## Uncounted title/runtime barriers
+
+These titles reached the Ullage boundary but are not included in the tested
+count because they did not produce a usable renderer result. Their boundary
+and cleanup evidence is still useful, and coverage remains **71/157**.
+
+| AppID | Title | Evidence | Classification |
+| ---: | --- | --- | --- |
+| 442070 | Drawful 2 | The valid standalone Windows entry launched through Ullage; the advertised `launch_mp.bat` option was absent from the depot and is now hidden by the `ullage-disabled` marker. The native Steamworks probe passed initialization, identity, ownership, and stats enumeration; the game showed `Application load error 3:0000065432`. Native Stop returned to Play with no selected-prefix processes. | Multi-option launch handling is fixed and covered by real Steam plus fixture tests. The remaining failure is a title/SteamStub loader boundary; it is not an Ullage mapping or supervision failure. Unpacking protected executables would violate the untouched-depot boundary and is not part of Ullage. |
+
 ## Current run
 
 Status letters: `P` proven, `I` indirect/provisional, `F` failed, `—` not yet

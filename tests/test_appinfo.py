@@ -156,6 +156,11 @@ def main():
                             "executable": "Game.app",
                             "config": {"oslist": "macos"},
                         },
+                        "3": {
+                            "executable": "launch_mp.bat",
+                            "config": {"oslist": "windows"},
+                        },
+                        "4": {"executable": "missing.exe"},
                     }
                 },
             }
@@ -165,12 +170,17 @@ def main():
             filename.write_bytes(make_appinfo(appinfo_version, sections=sections))
             appinfo = MODULE.AppInfo(filename)
             launches = appinfo.windows_launches(42)
-            assert [item["entry"] for item in launches] == ["0", "1"]
+            assert [item["entry"] for item in launches] == ["0", "1", "4"]
             root = Path(directory) / "game"
             root.mkdir()
             (root / "Game.exe").write_bytes(b"pe")
             existing = appinfo.windows_launches(42, root)
             assert [item["entry"] for item in existing] == ["0"]
+            disabled = appinfo.disable_unusable_windows_launches(42, ["0", "1"])
+            assert [item["entry"] for item in disabled] == ["3", "4"]
+            launch = appinfo.records[42].sections["appinfo"]["config"]["launch"]
+            assert launch["3"]["config"]["oslist"] == MODULE.DISABLED_OSLIST
+            assert launch["4"]["config"]["oslist"] == MODULE.DISABLED_OSLIST
             changed = appinfo.replace_launches(
                 42, [("0", "shim-0.sh"), ("1", "shim-1.sh")]
             )
@@ -189,6 +199,7 @@ def main():
                     }
                     for entry, original, installed in changed
                 ],
+                "disabled": disabled,
             }
             restored = MODULE.AppInfo(filename)
             results = restored.restore_state(state)
