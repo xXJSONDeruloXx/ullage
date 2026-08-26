@@ -65,6 +65,7 @@ APP_ID=
 TARGET=
 LAUNCH_ENTRY=
 GAME_DIR=
+GAME_DIR_EXPLICIT=0
 INSTALL_DIR=
 PREFIX=
 ARCH=auto
@@ -94,7 +95,7 @@ while [ "$#" -gt 0 ]; do
         --appid) [ "$#" -ge 2 ] || die "--appid requires a value"; APP_ID=$2; shift 2 ;;
         --target) [ "$#" -ge 2 ] || die "--target requires a path"; TARGET=$2; shift 2 ;;
         --launch-entry) [ "$#" -ge 2 ] || die "--launch-entry requires a key"; LAUNCH_ENTRY=$2; shift 2 ;;
-        --game-dir) [ "$#" -ge 2 ] || die "--game-dir requires a path"; GAME_DIR=$2; shift 2 ;;
+        --game-dir) [ "$#" -ge 2 ] || die "--game-dir requires a path"; GAME_DIR=$2; GAME_DIR_EXPLICIT=1; shift 2 ;;
         --install-dir) [ "$#" -ge 2 ] || die "--install-dir requires a path"; INSTALL_DIR=$2; shift 2 ;;
         --state-dir) [ "$#" -ge 2 ] || die "--state-dir requires a path"; STATE_HOME=$2; shift 2 ;;
         --prefix) [ "$#" -ge 2 ] || die "--prefix requires a path"; PREFIX=$2; shift 2 ;;
@@ -379,8 +380,17 @@ elif [ -n "$TARGET_NAME" ]; then
     ENTRY_COUNT=$(wc -l <"$SPECS_TMP" | tr -d '[:space:]')
     [ "$ENTRY_COUNT" -gt 0 ] || die "no Windows launch entries found for AppID $APP_ID"
     if [ "$ENTRY_COUNT" -eq 1 ]; then
+        single_game_dir=$GAME_DIR
+        if [ "$GAME_DIR_EXPLICIT" -eq 0 ]; then
+            IFS="$(printf '\t')" read -r ignored executable workingdir <"$SPECS_TMP"
+            if [ -n "$workingdir" ]; then
+                single_game_dir="$INSTALL_DIR/$workingdir"
+            fi
+        fi
+        [ -d "$single_game_dir" ] ||
+            die "working directory for the launch entry does not exist: $single_game_dir"
         LAUNCH_REL=$("$PYTHON3_BIN" "$PATH_TOOL" relative "$INSTALL_DIR" "$LAUNCHER")
-        make_launcher "$LAUNCHER" "$LAUNCHER_TMP" "$TARGET" "$GAME_DIR" "$ARCH"
+        make_launcher "$LAUNCHER" "$LAUNCHER_TMP" "$TARGET" "$single_game_dir" "$ARCH"
     else
         MULTI_LAUNCH=1
         mkdir -p "$LAUNCHER_TMP_DIR"
@@ -400,7 +410,9 @@ elif [ -n "$TARGET_NAME" ]; then
                 *'PE32 executable'*) entry_arch=win32 ;;
                 *) die "Windows launch entry $entry is not a PE executable: $entry_target" ;;
             esac
-            if [ -n "$workingdir" ]; then
+            if [ "$GAME_DIR_EXPLICIT" -eq 1 ]; then
+                entry_game_dir=$GAME_DIR
+            elif [ -n "$workingdir" ]; then
                 entry_game_dir="$INSTALL_DIR/$workingdir"
             else
                 entry_game_dir=$(CDPATH= cd "$(dirname "$entry_target")" && pwd)
