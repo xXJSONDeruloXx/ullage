@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **74**.
-* Remaining to the 30% target: **83**.
+* Unique AppIDs tested in this run: **75**.
+* Remaining to the 30% target: **82**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -47,7 +47,7 @@ will require a user action-time acceptance before they can be exercised.
 
 These titles reached the Ullage boundary but are not included in the tested
 count because they did not produce a usable renderer result. Their boundary
-and cleanup evidence is still useful, and coverage remains **74/157**.
+and cleanup evidence is still useful, and coverage remains **75/157**.
 
 | AppID | Title | Evidence | Classification |
 | ---: | --- | --- | --- |
@@ -138,6 +138,8 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 2677470 | POOLS Demo | win64 | P | P | P | P | Freshly downloaded 1.1 GB Windows/macOS/Linux Unity/OpenXR depot. Auto mode mapped both Windows entries while preserving the native macOS/Linux entries; three native Play/confirmed-Stop cycles reached the rendered default menu with `gameoverlayui` attached and left no selected-prefix processes. Native Cloud mapped `WinAppDataLocalLow/Tensori/Pools` into the prefix; Steam launch/exit checks and the checked page state passed, but the title created no `.sav` file and no save round trip was proven. The OpenXR/BetaKey option was not selected by this macOS session. |
 | 2457890 | DRACOMATON | win64 | P | P | P | P | Freshly downloaded 285 MB Windows/macOS Unity depot with a `gameinstall` Cloud root. Native Play and relaunch reached the rendered DRACOMATON menu with `gameoverlayui` attached; native Cloud downloaded and watched two JSON saves through the mapped `MacAppSupport` path. Both confirmed Stop cycles returned to Play and reaped the Wine helper set; Steam uninstall plus Ullage removal restored the original launch and removed the owned Cloud link. |
 
+| 1144770 | SLUDGE LIFE | win64 | P | P | P | P | Freshly downloaded 690 MB Windows-only Unity depot. Native Play entered Running and rendered the full-screen first-run LOGIN surface for more than 50 seconds; native Stop returned to Play with no selected-prefix processes. The first-run gate prevented a gameplay or save round trip, so those remain unclaimed. |
+
 ## Per-title evidence
 
 The bridge log and Steam content log are the authoritative lifecycle artifacts.
@@ -215,6 +217,8 @@ transcribed here.
 | 2677470 | `~/.ullage/logs/2677470-pools.log`; three native Stop requests each ended with `wine_exit=143 signal_received=1` and `reaped_game_pids=none` | Freshly downloaded multi-platform Unity/OpenXR depot. Auto mapping patched Windows entries 0 and 3 into separate launchers; native Play selected the default entry and rendered the POOLS menu with `gameoverlayui` attached on all three runs. Native Cloud logged launch and exit evaluation of `/Users/kurt/Library/Application Support/Ullage/2677470/Tensori/Pools`, found zero matching `.sav` files, and left the page checked. Steam uninstall and Ullage removal restored both launch entries and removed the Cloud link/override. |
 | 2457890 | `~/.ullage/logs/2457890-dracomaton.log`; two native Stop requests each ended with `wine_exit=143 signal_received=1`, eight helper PIDs reaped, and `reaped_game_pids=none` | Fresh Windows/macOS Unity depot. Both native Play cycles rendered the DRACOMATON menu with `gameoverlayui` attached. Native Cloud downloaded `RunData.json` and `SaveData.json` into the mapped `MacAppSupport` path, watched both on launch, and evaluated both unchanged files on exit. Steam uninstall and Ullage removal restored `Dracomaton/DRACOMATON.exe` and removed the owned Cloud link. |
 | 397950 | `~/.ullage/logs/397950-clustertruck.log`; native Stop ended with `wine_exit=143 signal_received=1`, `reaped_helper_pids=39547`, and `reaped_game_pids=none` | Freshly downloaded 453 MB depot. Native Play reached the rendered Clustertruck Configuration window but not a game scene; Stop returned to Play and Steam uninstall plus Ullage removal restored `Clustertruck.exe`, leaving only the title's small generated `output_log.txt`. |
+
+| 1144770 | `~/.ullage/logs/1144770-sludge-life.log`; native Stop ended with `wine_exit=143 signal_received=1`, eight helper PIDs reaped, and no game PIDs left | Fresh Windows-only x64 Unity depot. The desktop capture showed the rendered full-screen LOGIN surface; the native Steam page returned to Play after Stop and no selected-prefix Wine/game processes remained. No gameplay, Steamworks feature call, or Cloud save round trip was claimed. |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every
