@@ -65,10 +65,10 @@ describe the matching built-in layout and loader rules. Do not add
 `native,builtin` overrides for the built-in files unless the selected runtime
 requires them.
 
-This boundary is evidenced by Press Any Button (AppID 1448030): the normal
-GameHub runtime fell back to Wine Vulkan and exited with
-`VK_ERROR_FEATURE_NOT_PRESENT`; the same untouched depot rendered with the
-DXMT i386 components above, retained the native Steam overlay, and passed two
-native Steam Stop/relaunch cycles. This proves a reusable runtime selection
-point, not universal DXMT compatibility. Ullage does not vendor or download
-these components.
+This boundary is evidenced by Press Any Button (AppID 1448030) and POPGOES
+Arcade (AppID 1986840): the normal GameHub runtime fell back to Wine Vulkan and
+exited with `VK_ERROR_FEATURE_NOT_PRESENT`; both untouched depots rendered with
+the DXMT i386 components above and retained the native Steam overlay. Press Any
+Button also passed two native Steam Stop/relaunch cycles. This proves a
+reusable runtime selection point, not universal DXMT compatibility. Ullage does
+not vendor or download these components.
