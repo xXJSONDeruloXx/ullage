@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **72**.
-* Remaining to the 30% target: **85**.
+* Unique AppIDs tested in this run: **73**.
+* Remaining to the 30% target: **84**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -47,7 +47,7 @@ will require a user action-time acceptance before they can be exercised.
 
 These titles reached the Ullage boundary but are not included in the tested
 count because they did not produce a usable renderer result. Their boundary
-and cleanup evidence is still useful, and coverage remains **72/157**.
+and cleanup evidence is still useful, and coverage remains **73/157**.
 
 | AppID | Title | Evidence | Classification |
 | ---: | --- | --- | --- |
@@ -133,6 +133,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 292280 | SPY Fox in: Cheese Chase | win32 | P | P | P | P | Freshly downloaded 140 MB ScummVM Windows depot with a `gameinstall` Cloud root. The first-run ScummVM update prompt was dismissed, the title scene rendered, and native Steam overlay attachment was observed. Two native Play/confirmed-Stop cycles returned to Play with no selected-prefix processes; Steam uninstall and Ullage removal restored the original launch entry while preserving the 16 KB `Saves` directory. |
 | 322190 | SteamWorld Heist | win32 | P | P | P | P | Freshly downloaded 191 MB 32-bit Windows depot. The long intro and interactive menu rendered with native Steam overlay attachment; two native Play/confirmed-Stop cycles returned to Play with no selected-prefix processes. Its appinfo uses `MacAppSupport` rather than a supported Windows UFS root, so the native page remained `Steam Cloud Out of Date`; Steam uninstall and Ullage removal completed cleanly. |
 | 4663130 | Normal Golf Game Demo | win64 | P | P | P | P | Freshly downloaded 529 MB Windows-only nested Unity depot (`Normal/Normal Golf Game.exe`). Two native Play/confirmed-Stop cycles reached the rendered streamer-mode surface with `gameoverlayui` attached, returned to Play, and left no selected-prefix Wine/game processes. No Auto-Cloud metadata. |
+| 2677470 | POOLS Demo | win64 | P | P | P | P | Freshly downloaded 1.1 GB Windows/macOS/Linux Unity/OpenXR depot. Auto mode mapped both Windows entries while preserving the native macOS/Linux entries; three native Play/confirmed-Stop cycles reached the rendered default menu with `gameoverlayui` attached and left no selected-prefix processes. Native Cloud mapped `WinAppDataLocalLow/Tensori/Pools` into the prefix; Steam launch/exit checks and the checked page state passed, but the title created no `.sav` file and no save round trip was proven. The OpenXR/BetaKey option was not selected by this macOS session. |
 
 ## Per-title evidence
 
@@ -208,6 +209,7 @@ transcribed here.
 | 292280 | `~/.ullage/logs/292280-spy-fox.log`; two native Stop requests each ended with `wine_exit=143 signal_received=1` and no selected-prefix processes | Fresh appinfo exposed the Windows ScummVM entry and `gameinstall` Cloud root. Native Play reached the ScummVM prompt and then the rendered title scene; the second Play cycle also reached Running. Both Stop confirmations returned the page to Play; Steam removed the depot and Ullage restored `ScummVM_Windows\\scummvm.exe`, while the generated `Saves` directory was preserved. |
 | 322190 | `~/.ullage/logs/322190-steamworld-heist.log`; two native Stop requests each ended with `wine_exit=143 signal_received=1` and no selected-prefix processes | Native Play reached the rendered intro and interactive SteamWorld Heist menu on the first run and the intro again on relaunch; `gameoverlayui` attached to the Windows process. Both Stop confirmations returned to Play, Steam removed the depot, and Ullage restored `Heist.exe`. No Windows Cloud mapping was applied because the metadata exposed only `MacAppSupport`; the native page continued to report Cloud Out of Date. |
 | 4663130 | `~/.ullage/logs/4663130-normal-golf.log`; two native Stop requests each ended with `wine_exit=143 signal_received=1` and `reaped_game_pids=none` | Freshly downloaded nested x64 Unity depot. Both native Play cycles showed the rendered streamer-mode surface with `gameoverlayui` attached; both confirmed Stop flows produced `App Running` -> `Terminating` -> `Fully Installed` and left no matching game, overlay, Wine, or wineserver processes. |
+| 2677470 | `~/.ullage/logs/2677470-pools.log`; three native Stop requests each ended with `wine_exit=143 signal_received=1` and `reaped_game_pids=none` | Freshly downloaded multi-platform Unity/OpenXR depot. Auto mapping patched Windows entries 0 and 3 into separate launchers; native Play selected the default entry and rendered the POOLS menu with `gameoverlayui` attached on all three runs. Native Cloud logged launch and exit evaluation of `/Users/kurt/Library/Application Support/Ullage/2677470/Tensori/Pools`, found zero matching `.sav` files, and left the page checked. Steam uninstall and Ullage removal restored both launch entries and removed the Cloud link/override. |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every
