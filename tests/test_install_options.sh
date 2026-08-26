@@ -53,6 +53,38 @@ case "$BRIDGE_HELP" in
     *) printf '%s\n' 'bridge missing --steamclient64-forwarder' >&2; exit 1 ;;
 esac
 case "$INSTALL_HELP" in
+    *"--wine-prefix-base PATH"*) ;;
+    *) printf '%s\n' 'installer missing --wine-prefix-base' >&2; exit 1 ;;
+esac
+case "$BRIDGE_HELP" in
+    *"--wine-prefix-base PATH"*) ;;
+    *) printf '%s\n' 'bridge missing --wine-prefix-base' >&2; exit 1 ;;
+esac
+case "$INSTALL_HELP" in
+    *"--wine-arch win32|win64"*) ;;
+    *) printf '%s\n' 'installer missing --wine-arch' >&2; exit 1 ;;
+esac
+case "$BRIDGE_HELP" in
+    *"--wine-arch win32|win64"*) ;;
+    *) printf '%s\n' 'bridge missing --wine-arch' >&2; exit 1 ;;
+esac
+case "$INSTALL_HELP" in
+    *"--sandboxfs-manifest PATH"*) ;;
+    *) printf '%s\n' 'installer missing --sandboxfs-manifest' >&2; exit 1 ;;
+esac
+case "$BRIDGE_HELP" in
+    *"--sandboxfs-manifest PATH"*) ;;
+    *) printf '%s\n' 'bridge missing --sandboxfs-manifest' >&2; exit 1 ;;
+esac
+case "$INSTALL_HELP" in
+    *"--sandboxfs-lib PATH"*) ;;
+    *) printf '%s\n' 'installer missing --sandboxfs-lib' >&2; exit 1 ;;
+esac
+case "$BRIDGE_HELP" in
+    *"--sandboxfs-lib PATH"*) ;;
+    *) printf '%s\n' 'bridge missing --sandboxfs-lib' >&2; exit 1 ;;
+esac
+case "$INSTALL_HELP" in
     *"--cloud-native"*) ;;
     *) printf '%s\n' 'installer missing --cloud-native' >&2; exit 1 ;;
 esac

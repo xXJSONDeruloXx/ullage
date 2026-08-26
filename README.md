@@ -67,6 +67,8 @@ make check
   probes, and known compatibility boundaries.
 * [Runtime contract](runtime/README.md) — host-supplied Wine/GPTK and
   lsteamclient requirements.
+* [macOS onboarding log](docs/macos-onboarding.md) — first-machine setup
+  evidence, road bumps, and the remaining end-to-end test gaps.
 
 Upstream-sensitive Wine/Proton portability work belongs in
 [ullage-patches](https://github.com/xXJSONDeruloXx/ullage-patches), not in this

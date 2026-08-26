@@ -36,8 +36,12 @@ Options:
   --wine-root PATH            Wine installation root
   --wine-dllpath PATHS        optional colon-separated Wine DLL search path
   --wine-dll-overrides VALUE  optional WINEDLLOVERRIDES value
+  --wine-prefix-base PATH     optional GameHub base prefix for a virtual prefix
+  --wine-arch win32|win64     optional WINEARCH value for the selected prefix
   --gptk-root PATH            Game Porting Toolkit runtime root
   --bridge-root PATH          lsteamclient artifact root
+  --sandboxfs-manifest PATH   optional GameHub SandboxFS layer manifest
+  --sandboxfs-lib PATH        optional GameHub SandboxFS dylib to inject
   --steamclient64-forwarder PATH
                               optional canonical-name Steam client forwarder
   --log PATH                  append Wine output here
@@ -73,8 +77,12 @@ STEAM_ROOT="${STEAM_ROOT:-$HOME_VALUE/Library/Application Support/Steam}"
 WINE_ROOT="${WINE_ROOT:-}"
 WINE_DLLPATH_VALUE="${WINE_DLLPATH:-}"
 WINE_DLL_OVERRIDES_VALUE="${WINEDLLOVERRIDES_VALUE:-${WINEDLLOVERRIDES:-lsteamclient=b}}"
+WINEPREFIX_BASE_VALUE="${WINEPREFIX_BASE_VALUE:-${WINEPREFIX_BASE:-}}"
+WINE_ARCH_VALUE="${WINE_ARCH_VALUE:-${WINEARCH:-}}"
 GPTK_ROOT="${GPTK_ROOT:-}"
 BRIDGE_ROOT="${BRIDGE_ROOT:-$REPO_ROOT/runtime/lsteamclient}"
+SANDBOXFS_LAYER_MANIFEST_VALUE="${SANDBOXFS_LAYER_MANIFEST_VALUE:-${SANDBOXFS_LAYER_MANIFEST:-}}"
+SANDBOXFS_LIB_PATH_VALUE="${SANDBOXFS_LIB_PATH_VALUE:-${SANDBOXFS_LIB_PATH:-}}"
 STEAMCLIENT64_FORWARDER="${STEAMCLIENT64_FORWARDER:-}"
 LOG_FILE=
 WINE_DEBUG_VALUE=${WINEDEBUG:--all}
@@ -104,8 +112,12 @@ while [ "$#" -gt 0 ]; do
         --wine-root) [ "$#" -ge 2 ] || die "--wine-root requires a path"; WINE_ROOT=$2; shift 2 ;;
         --wine-dllpath) [ "$#" -ge 2 ] || die "--wine-dllpath requires a value"; WINE_DLLPATH_VALUE=$2; shift 2 ;;
         --wine-dll-overrides) [ "$#" -ge 2 ] || die "--wine-dll-overrides requires a value"; WINE_DLL_OVERRIDES_VALUE=$2; shift 2 ;;
+        --wine-prefix-base) [ "$#" -ge 2 ] || die "--wine-prefix-base requires a path"; WINEPREFIX_BASE_VALUE=$2; shift 2 ;;
+        --wine-arch) [ "$#" -ge 2 ] || die "--wine-arch requires a value"; WINE_ARCH_VALUE=$2; shift 2 ;;
         --gptk-root) [ "$#" -ge 2 ] || die "--gptk-root requires a path"; GPTK_ROOT=$2; shift 2 ;;
         --bridge-root) [ "$#" -ge 2 ] || die "--bridge-root requires a path"; BRIDGE_ROOT=$2; shift 2 ;;
+        --sandboxfs-manifest) [ "$#" -ge 2 ] || die "--sandboxfs-manifest requires a path"; SANDBOXFS_LAYER_MANIFEST_VALUE=$2; shift 2 ;;
+        --sandboxfs-lib) [ "$#" -ge 2 ] || die "--sandboxfs-lib requires a path"; SANDBOXFS_LIB_PATH_VALUE=$2; shift 2 ;;
         --steamclient64-forwarder) [ "$#" -ge 2 ] || die "--steamclient64-forwarder requires a path"; STEAMCLIENT64_FORWARDER=$2; shift 2 ;;
         --log) [ "$#" -ge 2 ] || die "--log requires a path"; LOG_FILE=$2; shift 2 ;;
         --wine-debug) [ "$#" -ge 2 ] || die "--wine-debug requires a value"; WINE_DEBUG_VALUE=$2; shift 2 ;;
@@ -186,6 +198,7 @@ if [ "$ARCH" = auto ]; then
 fi
 case "$ARCH" in win32|win64) ;; *) die "invalid --arch: $ARCH" ;; esac
 case "$PRESERVE_STEAM_TRANSPORT" in 0|1) ;; *) die "invalid transport mode" ;; esac
+case "$WINE_ARCH_VALUE" in ''|win32|win64) ;; *) die "invalid --wine-arch value: $WINE_ARCH_VALUE" ;; esac
 
 WINE_BIN="$WINE_ROOT/bin/wine"
 WINESERVER="$WINE_ROOT/bin/wineserver"
@@ -206,6 +219,20 @@ else
 fi
 if [ -z "$STEAMCLIENT64_FORWARDER" ]; then
     STEAMCLIENT64_FORWARDER="$BRIDGE_ROOT/x86_64-windows/steamclient64.dll"
+fi
+if [ -n "$WINEPREFIX_BASE_VALUE" ]; then
+    [ -d "$WINEPREFIX_BASE_VALUE" ] ||
+        die "Wine prefix base does not exist: $WINEPREFIX_BASE_VALUE"
+    [ -f "$WINEPREFIX_BASE_VALUE/system.reg" ] ||
+        die "Wine prefix base is not initialized: $WINEPREFIX_BASE_VALUE"
+fi
+if [ -n "$SANDBOXFS_LAYER_MANIFEST_VALUE" ] || [ -n "$SANDBOXFS_LIB_PATH_VALUE" ]; then
+    [ -n "$SANDBOXFS_LAYER_MANIFEST_VALUE" ] && [ -n "$SANDBOXFS_LIB_PATH_VALUE" ] ||
+        die "--sandboxfs-manifest and --sandboxfs-lib must be supplied together"
+    [ -f "$SANDBOXFS_LAYER_MANIFEST_VALUE" ] ||
+        die "SandboxFS layer manifest is missing: $SANDBOXFS_LAYER_MANIFEST_VALUE"
+    [ -f "$SANDBOXFS_LIB_PATH_VALUE" ] ||
+        die "SandboxFS library is missing: $SANDBOXFS_LIB_PATH_VALUE"
 fi
 
 if [ -z "$PREFIX" ]; then
@@ -444,8 +471,12 @@ fi
     printf 'WINE_ROOT=%s\n' "$(shell_quote "$WINE_ROOT")"
     printf 'WINEDLLPATH_VALUE=%s\n' "$(shell_quote "$WINE_DLLPATH_VALUE")"
     printf 'WINEDLLOVERRIDES_VALUE=%s\n' "$(shell_quote "$WINE_DLL_OVERRIDES_VALUE")"
+    printf 'WINEPREFIX_BASE_VALUE=%s\n' "$(shell_quote "$WINEPREFIX_BASE_VALUE")"
+    printf 'WINE_ARCH_VALUE=%s\n' "$(shell_quote "$WINE_ARCH_VALUE")"
     printf 'GPTK_ROOT=%s\n' "$(shell_quote "$GPTK_ROOT")"
     printf 'BRIDGE_ROOT=%s\n' "$(shell_quote "$BRIDGE_ROOT")"
+    printf 'SANDBOXFS_LAYER_MANIFEST_VALUE=%s\n' "$(shell_quote "$SANDBOXFS_LAYER_MANIFEST_VALUE")"
+    printf 'SANDBOXFS_LIB_PATH_VALUE=%s\n' "$(shell_quote "$SANDBOXFS_LIB_PATH_VALUE")"
     printf 'STEAMCLIENT64_FORWARDER=%s\n' "$(shell_quote "$STEAMCLIENT64_FORWARDER")"
     printf 'FD_EXEC=%s\n' "$(shell_quote "$SCRIPT_DIR/ullage-fd-exec")"
     printf 'LOG_FILE=%s\n' "$(shell_quote "$LOG_FILE")"

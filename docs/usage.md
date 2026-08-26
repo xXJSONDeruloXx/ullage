@@ -6,7 +6,9 @@ button invokes an external launcher. Steam must be fully quit while
 
 ## Requirements
 
-* Native macOS Steam configured to retain Windows depots:
+* Native macOS Steam configured to retain Windows depots. On macOS, put the
+  following line in
+  `$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steam_dev.cfg`:
 
   ~~~text
   @sSteamCmdForcePlatformType windows

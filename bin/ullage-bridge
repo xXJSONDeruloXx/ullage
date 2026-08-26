@@ -31,8 +31,12 @@ Runtime options:
   --wine-root PATH             GameHub Wine installation root
   --wine-dllpath PATHS         optional colon-separated Wine DLL search path
   --wine-dll-overrides VALUE   optional WINEDLLOVERRIDES value
+  --wine-prefix-base PATH      optional GameHub base prefix for a virtual prefix
+  --wine-arch win32|win64      optional WINEARCH value for the selected prefix
   --gptk-root PATH            Game Porting Toolkit runtime root
   --bridge-root PATH          directory containing lsteamclient artifacts
+  --sandboxfs-manifest PATH   optional GameHub SandboxFS layer manifest
+  --sandboxfs-lib PATH        optional GameHub SandboxFS dylib to inject
   --steamclient64-forwarder PATH
                               optional canonical-name Steam client forwarder
   --fd-exec PATH              fd-cleaning exec helper
@@ -59,8 +63,12 @@ ARCH=auto
 STEAM_ROOT="${STEAM_ROOT:-$HOME_VALUE/Library/Application Support/Steam}"
 WINE_ROOT="${WINE_ROOT:-}"
 WINE_DLLPATH_VALUE="${WINE_DLLPATH_VALUE:-${WINE_DLLPATH:-}}"
+WINEPREFIX_BASE_VALUE="${WINEPREFIX_BASE_VALUE:-${WINEPREFIX_BASE:-}}"
+WINE_ARCH_VALUE="${WINE_ARCH_VALUE:-${WINEARCH:-}}"
 GPTK_ROOT="${GPTK_ROOT:-}"
 BRIDGE_ROOT="${BRIDGE_ROOT:-$REPO_ROOT/runtime/lsteamclient}"
+SANDBOXFS_LAYER_MANIFEST_VALUE="${SANDBOXFS_LAYER_MANIFEST_VALUE:-${SANDBOXFS_LAYER_MANIFEST:-}}"
+SANDBOXFS_LIB_PATH_VALUE="${SANDBOXFS_LIB_PATH_VALUE:-${SANDBOXFS_LIB_PATH:-}}"
 STEAMCLIENT64_FORWARDER="${STEAMCLIENT64_FORWARDER:-}"
 FD_EXEC="${FD_EXEC:-$SCRIPT_DIR/ullage-fd-exec}"
 REAPER="${REAPER:-$SCRIPT_DIR/ullage-reap}"
@@ -140,6 +148,16 @@ while [ "$#" -gt 0 ]; do
             WINEDLLOVERRIDES_VALUE=$2
             shift 2
             ;;
+        --wine-prefix-base)
+            [ "$#" -ge 2 ] || die "--wine-prefix-base requires a path"
+            WINEPREFIX_BASE_VALUE=$2
+            shift 2
+            ;;
+        --wine-arch)
+            [ "$#" -ge 2 ] || die "--wine-arch requires a value"
+            WINE_ARCH_VALUE=$2
+            shift 2
+            ;;
         --gptk-root)
             [ "$#" -ge 2 ] || die "--gptk-root requires a path"
             GPTK_ROOT=$2
@@ -148,6 +166,16 @@ while [ "$#" -gt 0 ]; do
         --bridge-root)
             [ "$#" -ge 2 ] || die "--bridge-root requires a path"
             BRIDGE_ROOT=$2
+            shift 2
+            ;;
+        --sandboxfs-manifest)
+            [ "$#" -ge 2 ] || die "--sandboxfs-manifest requires a path"
+            SANDBOXFS_LAYER_MANIFEST_VALUE=$2
+            shift 2
+            ;;
+        --sandboxfs-lib)
+            [ "$#" -ge 2 ] || die "--sandboxfs-lib requires a path"
+            SANDBOXFS_LIB_PATH_VALUE=$2
             shift 2
             ;;
         --steamclient64-forwarder)
@@ -271,6 +299,10 @@ case "$PRESERVE_STEAM_TRANSPORT" in
     0|1) ;;
     *) die "invalid --preserve-steam-transport value: $PRESERVE_STEAM_TRANSPORT" ;;
 esac
+case "$WINE_ARCH_VALUE" in
+    ''|win32|win64) ;;
+    *) die "invalid --wine-arch value: $WINE_ARCH_VALUE" ;;
+esac
 
 WINE_BIN="$WINE_ROOT/bin/wine"
 WINESERVER="$WINE_ROOT/bin/wineserver"
@@ -304,6 +336,19 @@ require_file "$HOST_LSTEAMCLIENT"
 require_file "$WIN_LSTEAMCLIENT"
 require_file "$PREFIX/system.reg"
 
+if [ -n "$WINEPREFIX_BASE_VALUE" ]; then
+    [ -d "$WINEPREFIX_BASE_VALUE" ] ||
+        die "Wine prefix base does not exist: $WINEPREFIX_BASE_VALUE"
+    [ -f "$WINEPREFIX_BASE_VALUE/system.reg" ] ||
+        die "Wine prefix base is not initialized: $WINEPREFIX_BASE_VALUE"
+fi
+if [ -n "$SANDBOXFS_LAYER_MANIFEST_VALUE" ] || [ -n "$SANDBOXFS_LIB_PATH_VALUE" ]; then
+    [ -n "$SANDBOXFS_LAYER_MANIFEST_VALUE" ] && [ -n "$SANDBOXFS_LIB_PATH_VALUE" ] ||
+        die "--sandboxfs-manifest and --sandboxfs-lib must be supplied together"
+    require_file "$SANDBOXFS_LAYER_MANIFEST_VALUE"
+    require_file "$SANDBOXFS_LIB_PATH_VALUE"
+fi
+
 STEAMCLIENT64_TARGET="$PREFIX/drive_c/Program Files (x86)/Steam/steamclient64.dll"
 if [ "$ARCH" = win64 ] && [ -f "$STEAMCLIENT64_FORWARDER" ]; then
     [ -f "$STEAMCLIENT64_TARGET" ] ||
@@ -328,6 +373,10 @@ if [ "$DRY_RUN" = 1 ]; then
     printf 'prefix=%s\n' "$PREFIX"
     printf 'wine=%s\n' "$WINE_BIN"
     printf 'gptk=%s\n' "$GPTK_ROOT"
+    printf 'wine_prefix_base=%s\n' "$WINEPREFIX_BASE_VALUE"
+    printf 'wine_arch=%s\n' "$WINE_ARCH_VALUE"
+    printf 'sandboxfs_manifest=%s\n' "$SANDBOXFS_LAYER_MANIFEST_VALUE"
+    printf 'sandboxfs_lib=%s\n' "$SANDBOXFS_LIB_PATH_VALUE"
     printf 'steam_client=%s\n' "$STEAM_CLIENT_DYLIB"
     printf 'host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf 'win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
@@ -351,8 +400,14 @@ PATH_VALUE=/usr/bin:/bin:/usr/sbin:/sbin
 if [ -z "$WINE_DLLPATH_VALUE" ] && [ -n "${WINEDLLPATH_VALUE:-}" ]; then
     WINE_DLLPATH_VALUE=$WINEDLLPATH_VALUE
 fi
-WINEDLLPATH_VALUE=${WINE_DLLPATH_VALUE:-$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine}
-DYLD_FALLBACK_LIBRARY_PATH_VALUE=${DYLD_FALLBACK_LIBRARY_PATH_VALUE:-$GPTK_ROOT/external:$WINE_ROOT/lib:$WINE_ROOT/lib/wine/x86_64-unix}
+if [ -n "$WINE_DLLPATH_VALUE" ]; then
+    WINEDLLPATH_VALUE=$WINE_DLLPATH_VALUE
+elif [ "$ARCH" = win64 ]; then
+    WINEDLLPATH_VALUE="$BRIDGE_ROOT/x86_64-windows:$BRIDGE_ROOT/x86_64-unix:$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine"
+else
+    WINEDLLPATH_VALUE="$BRIDGE_ROOT/i386-windows:$BRIDGE_ROOT/x86_64-unix:$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine"
+fi
+DYLD_FALLBACK_LIBRARY_PATH_VALUE=${DYLD_FALLBACK_LIBRARY_PATH_VALUE:-$BRIDGE_ROOT/x86_64-unix:$GPTK_ROOT/external:$WINE_ROOT/lib:$WINE_ROOT/lib/wine/x86_64-unix}
 WINEDLLOVERRIDES_VALUE=${WINEDLLOVERRIDES_VALUE:-${WINEDLLOVERRIDES:-lsteamclient=b}}
 STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS"
 
@@ -367,6 +422,17 @@ STEAM3_MASTER_VALUE=${Steam3Master:-}
 STEAM_VIRTUAL_GAMEPAD_INFO_VALUE=${SteamVirtualGamepadInfo:-}
 if [ -z "$STEAM_VIRTUAL_GAMEPAD_INFO_VALUE" ]; then
     STEAM_VIRTUAL_GAMEPAD_INFO_VALUE=${SteamVirtualGamepadInfo_Proton:-}
+fi
+DYLD_INSERT_LIBRARIES_VALUE=
+if [ "$PRESERVE_STEAM_TRANSPORT" = 1 ] && [ -n "$STEAM_DYLD_INSERT_LIBRARIES_VALUE" ]; then
+    DYLD_INSERT_LIBRARIES_VALUE=$STEAM_DYLD_INSERT_LIBRARIES_VALUE
+fi
+if [ -n "$SANDBOXFS_LIB_PATH_VALUE" ]; then
+    if [ -n "$DYLD_INSERT_LIBRARIES_VALUE" ]; then
+        DYLD_INSERT_LIBRARIES_VALUE="$DYLD_INSERT_LIBRARIES_VALUE:$SANDBOXFS_LIB_PATH_VALUE"
+    else
+        DYLD_INSERT_LIBRARIES_VALUE=$SANDBOXFS_LIB_PATH_VALUE
+    fi
 fi
 STEAM_CLIENT_CONFIG_FILE_VALUE=${STEAM_CLIENT_CONFIG_FILE:-}
 STEAM_APP_BUNDLE_PATH_VALUE=${STEAM_APP_BUNDLE_PATH:-}
@@ -390,6 +456,11 @@ fi
     printf '[ullage-bridge] preserve_steam_transport=%s\n' "$PRESERVE_STEAM_TRANSPORT"
     printf '[ullage-bridge] steam_stop_watch=%s\n' "$STEAM_STOP_WATCH"
     printf '[ullage-bridge] wine_dll_overrides=%s\n' "$WINEDLLOVERRIDES_VALUE"
+    printf '[ullage-bridge] wine_prefix_base=%s\n' "$WINEPREFIX_BASE_VALUE"
+    printf '[ullage-bridge] wine_arch=%s\n' "$WINE_ARCH_VALUE"
+    printf '[ullage-bridge] sandboxfs_manifest=%s\n' "$SANDBOXFS_LAYER_MANIFEST_VALUE"
+    printf '[ullage-bridge] sandboxfs_lib=%s\n' "$SANDBOXFS_LIB_PATH_VALUE"
+    printf '[ullage-bridge] dyld_insert_libraries=%s\n' "$DYLD_INSERT_LIBRARIES_VALUE"
     printf '[ullage-bridge] steam_virtual_gamepad_metadata=%s\n' "$STEAM_VIRTUAL_GAMEPAD_PRESENT"
 } >>"$LOG_FILE" 2>&1
 
@@ -536,6 +607,10 @@ launch_clean() {
         WINEDEBUG="$WINE_DEBUG_VALUE" \
         DYLD_FALLBACK_LIBRARY_PATH="$DYLD_FALLBACK_LIBRARY_PATH_VALUE" \
         WINE_GPTK_LIBD3DSHARED_PATH="$GPTK_D3DSHARED" \
+        WINE_PATH="$WINE_ROOT" \
+        WINE_INSTALLATION_PATH="$WINE_ROOT" \
+        SANDBOXFS_LAYER_MANIFEST="$SANDBOXFS_LAYER_MANIFEST_VALUE" \
+        SANDBOXFS_LIB_PATH="$SANDBOXFS_LIB_PATH_VALUE" \
         WINEENGINE_GPTK_DXGI_SPOOF_ENABLED=1 \
         SteamAppId="$APP_ID" \
         SteamGameId="$APP_ID" \
@@ -544,7 +619,18 @@ launch_clean() {
         SteamPath="$STEAM_ROOT" \
         STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_COMPAT_CLIENT_INSTALL_PATH" \
         STEAM_COMPAT_DATA_PATH="$PREFIX" \
-        "$WINE_BIN" "$GAME_EXE" "$@" >>"$LOG_FILE" 2>&1 &
+        /bin/sh -c '
+            prefix_base=$1
+            wine_arch=$2
+            insert_libraries=$3
+            shift 3
+            if [ -n "$prefix_base" ]; then export WINEPREFIX_BASE="$prefix_base"; else unset WINEPREFIX_BASE; fi
+            if [ -n "$wine_arch" ]; then export WINEARCH="$wine_arch"; else unset WINEARCH; fi
+            if [ -n "$insert_libraries" ]; then export DYLD_INSERT_LIBRARIES="$insert_libraries"; else unset DYLD_INSERT_LIBRARIES; fi
+            exec "$@"
+        ' ullage-bridge-wine "$WINEPREFIX_BASE_VALUE" "$WINE_ARCH_VALUE" \
+            "$DYLD_INSERT_LIBRARIES_VALUE" "$WINE_BIN" "$GAME_EXE" "$@" \
+            >>"$LOG_FILE" 2>&1 &
     WINE_CHILD_PID=$!
     trap forward_signal HUP INT TERM
     start_steam_stop_watch "$STEAM_ROOT/logs/content_log.txt" "$$"
@@ -567,6 +653,10 @@ launch_with_steam_transport() {
         WINEDEBUG="$WINE_DEBUG_VALUE" \
         DYLD_FALLBACK_LIBRARY_PATH="$DYLD_FALLBACK_LIBRARY_PATH_VALUE" \
         WINE_GPTK_LIBD3DSHARED_PATH="$GPTK_D3DSHARED" \
+        WINE_PATH="$WINE_ROOT" \
+        WINE_INSTALLATION_PATH="$WINE_ROOT" \
+        SANDBOXFS_LAYER_MANIFEST="$SANDBOXFS_LAYER_MANIFEST_VALUE" \
+        SANDBOXFS_LIB_PATH="$SANDBOXFS_LIB_PATH_VALUE" \
         WINEENGINE_GPTK_DXGI_SPOOF_ENABLED=1 \
         SteamAppId="$APP_ID" \
         SteamGameId="$APP_ID" \
@@ -576,7 +666,7 @@ launch_with_steam_transport() {
         STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_COMPAT_CLIENT_INSTALL_PATH" \
         STEAM_COMPAT_DATA_PATH="$PREFIX" \
         STEAM_DYLD_INSERT_LIBRARIES="$STEAM_DYLD_INSERT_LIBRARIES_VALUE" \
-        DYLD_INSERT_LIBRARIES="$STEAM_DYLD_INSERT_LIBRARIES_VALUE" \
+        DYLD_INSERT_LIBRARIES= \
         SteamEnv="$STEAM_ENV_VALUE" \
         SteamAppUser="$STEAM_APP_USER_VALUE" \
         SteamUser="$STEAM_USER_VALUE" \
@@ -587,7 +677,18 @@ launch_with_steam_transport() {
         ENABLE_VK_LAYER_VALVE_steam_overlay_1="$ENABLE_VK_LAYER_STEAM_OVERLAY_VALUE" \
         SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="$SDL_STEAM_GAMEPAD_VALUE" \
         SDL_GAMECONTROLLER_IGNORE_DEVICES="$SDL_IGNORE_DEVICES_VALUE" \
-        "$WINE_BIN" "$GAME_EXE" "$@" >>"$LOG_FILE" 2>&1 &
+        /bin/sh -c '
+            prefix_base=$1
+            wine_arch=$2
+            insert_libraries=$3
+            shift 3
+            if [ -n "$prefix_base" ]; then export WINEPREFIX_BASE="$prefix_base"; else unset WINEPREFIX_BASE; fi
+            if [ -n "$wine_arch" ]; then export WINEARCH="$wine_arch"; else unset WINEARCH; fi
+            if [ -n "$insert_libraries" ]; then export DYLD_INSERT_LIBRARIES="$insert_libraries"; else unset DYLD_INSERT_LIBRARIES; fi
+            exec "$@"
+        ' ullage-bridge-wine "$WINEPREFIX_BASE_VALUE" "$WINE_ARCH_VALUE" \
+            "$DYLD_INSERT_LIBRARIES_VALUE" "$WINE_BIN" "$GAME_EXE" "$@" \
+            >>"$LOG_FILE" 2>&1 &
     WINE_CHILD_PID=$!
     trap forward_signal HUP INT TERM
     start_steam_stop_watch "$STEAM_ROOT/logs/content_log.txt" "$$"

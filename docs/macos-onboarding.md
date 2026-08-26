@@ -1,0 +1,458 @@
+# macOS onboarding log
+
+This is a running record of first-machine setup friction and observed
+requirements for Ullage. It is intentionally host-specific where paths or
+runtime behavior are involved. The project remains responsible for the small
+launch bridge; Wine, GPTK/D3DMetal, lsteamclient, and native Steam remain
+host-provided components.
+
+## Snapshot: 2026-08-26
+
+Repositories were fast-forwarded from `origin/main` before this test:
+
+* Ullage: `7113b2f` (`test: record SLUDGE LIFE renderer coverage`)
+* ullage-patches: `daf9591` (`runtime: add x64 Steam client forwarder`)
+
+The test host is an Apple M1 Mac mini with 8 GB RAM, macOS 15.6.1, Rosetta 2,
+native Steam build `1785799196`, and about 20 GB free on the internal Steam
+library after the test install. Rosetta can execute the x86_64 Wine runtime.
+
+## Road bumps
+
+### 1. The Windows depot flag needs the macOS client path
+
+The setting itself is:
+
+```text
+@sSteamCmdForcePlatformType windows
+```
+
+On macOS Steam, the file must be:
+
+```text
+$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steam_dev.cfg
+```
+
+Putting the same line in the Steam data root,
+`$HOME/Library/Application Support/Steam/steam_dev.cfg`, was silently
+ineffective. A reinstall then mounted the macOS depot: an `.app` bundle and
+about 92 MB for TIS-100. Moving the line to the bundled client's
+`Contents/MacOS` directory and fully restarting Steam mounted the Windows
+depot instead: depot `370361`, 50,190,783 bytes, with
+`tis100.exe` identified as a PE32 Windows executable.
+
+The restart is required before the setting affects content selection. The
+normal native Steam Play action still cannot execute that Windows executable;
+without an Ullage mapping it returned `Failed to start process for this game:
+OS Error 0`.
+
+### 2. Steam's usable Computer Use target is the CEF helper
+
+The reliable target on this host is:
+
+```text
+$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app
+```
+
+The parent targets (`Steam`, `com.valvesoftware.steam`, `/Applications/Steam.app`,
+and the alternate parent bundle) can fail with a ScreenCaptureKit `-10005`
+capture error or duplicate-bundle resolution. The helper reports the real
+Steam window and screenshot.
+
+Its accessibility tree exposes only the standard window and `Raise`; CEF page
+controls are not usable accessibility elements. The reliable workflow is:
+
+1. Capture a fresh helper screenshot.
+2. Derive coordinates from that screenshot.
+3. Perform one coordinate action.
+4. Capture a new screenshot and derive coordinates again.
+
+Store navigation, Library search, text entry, Return, product selection, and
+the TIS-100 install/uninstall controls were exercised this way. No CEF remote
+debugging port is needed.
+
+The helper can be relaunched through Computer Use once the parent is running,
+but Computer Use could not cold-launch or fully quit the parent on this host.
+The standard macOS launcher was needed to start `/Applications/Steam.app`,
+and the exact verified `steam_osx` process had to be terminated to force a
+client restart. This is an operational setup concern, not an Ullage runtime
+requirement.
+
+### 3. A fresh checkout may need `make` before live bridge validation
+
+`make check` passed, including the shell and Python tests, but the `check`
+target does not depend on `all`. On a clean host the generated
+`bin/ullage-fd-exec` helper may therefore be absent even though the test suite
+is green. Running `make` first produced the universal helper and allowed the
+bridge preflight to reach its runtime checks.
+
+The Steamworks probe was skipped because MinGW was not available. That is a
+known test-environment gap, not a failure of the other checks.
+
+### 4. GameHub's Wine runtime is not a drop-in raw `wine` command
+
+GameHub supplied these useful components:
+
+* Wine Proton 11.0, x86_64, at
+  `$HOME/Library/Application Support/com.gamemac.www/wine-engine/containers/wine_installations/10000073`
+* Apple GPTK 3.0-3 at
+  `$HOME/Library/Application Support/com.gamemac.www/wine-engine/downloads/gptk-3.0-3`
+* An initialized GameHub virtual prefix at
+  `$HOME/Library/Application Support/com.gamemac.www/wine-engine/containers/virtual_containers/1`
+
+The installation's own `prefix` directory is not the same thing as the
+GameHub game prefix. GameHub's recorded launch environment includes
+`WINE_PATH`, `WINE_INSTALLATION_PATH`, `WINEPREFIX`, `WINEPREFIX_BASE`,
+`WINEDLLPATH`, `DYLD_FALLBACK_LIBRARY_PATH`,
+`WINE_GPTK_LIBD3DSHARED_PATH`, `WINEARCH`, and GameHub's monitor/sandbox
+handoff variables. Invoking `bin/wine` with only a prefix failed to load
+`kernel32.dll`. Replaying the recorded environment reached Wine/MSYNC, but a
+raw TIS-100 invocation exited with status 53 without opening a window. This
+does not establish a renderer failure; it shows that the supported GameHub
+container launch contract still needs to be reproduced or deliberately
+formalized for Ullage.
+
+### 5. GameHub did not supply Ullage's Steam transport bridge
+
+The Wine and GPTK artifacts are present and usable as host inputs, but no
+matching files were found under the GameHub data root for:
+
+```text
+x86_64-unix/lsteamclient.so
+i386-windows/lsteamclient.dll
+x86_64-windows/lsteamclient.dll
+```
+
+The native Steam `steamclient.dylib` is present separately. The unrelated
+Android `libsteamclient.so` found elsewhere is not a substitute.
+
+`ullage-patches` records the required source patch and the x64
+`steamclient64.dll` forwarder, but it deliberately does not vendor the Wine
+source or generated lsteamclient outputs. Its build script expects a clean
+patched Wine/Proton source tree and `x86_64-w64-mingw32-gcc`; that compiler is
+also absent on this host. Ullage's read-only bridge preflight stopped at:
+
+```text
+required file is missing: .../ullage/runtime/lsteamclient/x86_64-unix/lsteamclient.so
+```
+
+This is the current hard blocker for an end-to-end Steam Play test. TIS-100
+is a useful first title because it is 32-bit and does not require the x64
+forwarder, but it still needs the host Unix lsteamclient and i386 Windows
+lsteamclient pair.
+
+## Test record
+
+TIS-100 (AppID `370360`) was already owned and was selected as the small
+test title. The native Steam client was restarted with the correctly placed
+depot flag, the Windows depot was downloaded to the internal library, and the
+installed files were verified without modifying the depot contents. The
+native Play attempt and Ullage bridge preflight were then allowed to fail at
+their respective documented boundaries. No Ullage appinfo mapping was
+installed because the required bridge artifacts are absent.
+
+The Windows depot remains installed at:
+
+```text
+$HOME/Library/Application Support/Steam/steamapps/common/TIS-100
+```
+
+## Still needed for the first full Ullage run
+
+1. A clean, pinned Wine/Proton source checkout containing the matching
+   `dlls/lsteamclient` source.
+2. The `ullage-patches` portability patch applied and verified against that
+   checkout.
+3. Built bridge outputs for the selected architecture: the Unix
+   `lsteamclient.so` plus the Windows lsteamclient DLL. Add the x64 Windows
+   DLL and build/stage the canonical-name forwarder for win64 titles.
+4. A reproducible way to create or clone one initialized GameHub-compatible
+   prefix per AppID, including the forwarder staging location for x64.
+5. Enough disk headroom for the source checkout and build products; the
+   current small-title test is fine, but a Wine rebuild on an 8 GB host with
+   roughly 20 GB free is tight.
+6. A documented launch environment that either uses GameHub's container
+   handoff or supplies Ullage with equivalent Wine/GPTK loader variables.
+
+Once those inputs exist, the next low-risk acceptance run is to install TIS-100
+through `ullage-install`, restart native Steam, press Play through the helper,
+and verify Wine launch, Steamworks initialization, native Stop, and clean
+prefix-scoped reaping.
+
+### 6. Remediation: fetch the matching Proton source instead of using an unrelated runtime
+
+The missing bridge source was resolved by cloning Proton's `proton_11.0`
+branch into the disposable work area and initializing its Wine submodule at
+the exact pinned commit from `ullage-patches`:
+
+```text
+/Users/danhimebauch/Developer/ullage-runtime-work/proton-11
+Wine: dc26e61847081a1b5cb0733dc30feba6ee575482
+```
+
+The sparse checkout includes Proton's top-level `lsteamclient/` source, and
+the `ullage-patches` macOS portability patch applied cleanly to the Wine
+submodule. This confirms that the source provenance is compatible; it does
+not yet produce usable runtime binaries. The next step is a scoped Proton SDK
+container build of the lsteamclient modules. The first build attempt should
+watch disk usage because the host has only about 17 GB free.
+
+The first invocation of Proton's `configure.sh` exposed another host
+prerequisite: macOS `/bin/bash` is Bash 3.2, but this script uses Bash 4-style
+case conversion (`${name,,}`). The configure step therefore stopped before it
+could create a Makefile. A newer Homebrew Bash is needed for this build path;
+the native Ullage scripts themselves still pass `make check` without it.
+
+After installing Homebrew Bash 5, configure pulled the Proton SteamRT SDK
+image successfully, but its UID probe treated Docker Desktop's default
+Apple-Silicon warning (the image is `linux/amd64` on this ARM host) as the
+numeric UID and stopped. The retry needs
+`--docker-opts='--platform=linux/amd64'` so the probe sees a clean value. The
+SDK image is build infrastructure only; a full Proton distribution build is
+not part of this test.
+
+That option is applied only to the generated Makefile and not to
+`configure.sh`'s initial probe, so it did not fix the first retry. Setting
+Docker's process-level `DOCKER_DEFAULT_PLATFORM=linux/amd64` is the effective
+workaround for the probe on this ARM Mac.
+
+The first direct Winemaker compile then failed because generated makefiles
+split the GameHub runtime's absolute path at the spaces in `Application
+Support`. The runtime itself is fine. The disposable build uses a no-space
+symlink to the same installation and regenerates the makefiles through that
+path; Ullage should eventually normalize or quote discovered runtime paths
+before emitting build or launch commands.
+
+With the path normalized, compilation reached the source and stopped because
+GameHub's installed public headers omit Wine's internal `wine/list.h`. Adding
+the pinned Wine checkout's `include/` directory as a disposable compile-only
+include path supplies that header and keeps the GameHub runtime binaries
+unchanged.
+
+The next compile failure was a missing `TRACE`/`ERR` macro, not a missing
+function: Wine's public debug header only defines those short names under
+`__WINESRC__`, which Proton normally supplies from its Wine build flags. The
+standalone module build now supplies that define explicitly.
+
+The x64 module then hit Wine's PE-versus-Unix Winsock header collision:
+`steamclient_main.c` includes C runtime headers before Winsock, so macOS
+expands Darwin's `htonl`/`htons` macros into the Wine declarations. The exact
+`__WINE_USE_MSVCRT` retry was incompatible with relocated native `winegcc`
+because Wine's variadic debug helpers became Microsoft-ABI functions. The
+disposable compile instead uses Wine's own `USE_WS_PREFIX` header mode and
+keeps the ABI mode unchanged.
+
+A complete direct Winemaker pass compiled most generated wrapper objects, but
+failed at the `lsteamclient64.spec` dependency and at Unix-source compilation:
+Proton's `unixlib.cpp`/`unixlib_generated.cpp` are meant to be built as Wine
+Unix-library sources, with `WINE_UNIX_LIB` and the generated internal call-table
+ABI. Treating every source as one Winelib target is therefore not a valid
+standalone build recipe. The build was abandoned without using its partial
+output.
+
+The native Wine module path required Homebrew `autoconf`, Homebrew `bison`
+(the system bison was too old), and Homebrew `mingw-w64`: Wine's native
+configure rejected Apple Clang as a PE compiler because it lacks `-mabi=ms`.
+With MinGW installed, the staged Wine configure now reaches the expected
+x86_64 PE/Unix checks, but its generated makefile pass stops on the sparse
+checkout's missing generated `wine/vulkan.h` even with `--without-vulkan`.
+That is a build-system completeness issue, not evidence that TIS-100 needs
+Vulkan; the next attempt will keep the source/build tree disposable and limit
+configuration to the lsteamclient module inputs.
+
+After generating the omitted Vulkan and syscall inputs, Wine configure completed
+and emitted the real lsteamclient module rules. The first native compile still
+failed because Apple Silicon's clang retained ARM preprocessor definitions when
+the generated rule supplied only `-m64`; Wine then saw ARM64 and AMD64 context
+types in the same header. The retry must pass an explicit `-arch x86_64` to the
+host C and C++ compilers. This is another macOS cross-architecture build flag,
+not a requirement to rebuild the full Proton runtime.
+
+That retry compiled the C++ wrapper set, then stopped in `unixlib.cpp` because
+Wine's Windows headers define the short `max` macro over C++'s `std::max`.
+The host-only compile needs the usual `NOMINMAX` define; the successful object
+files are retained in the disposable build directory for the next retry.
+
+With the x86_64 compiler flag and `NOMINMAX`, all 219 native wrapper objects
+compiled. A direct macOS link initially rejected the bridge's unresolved
+Windows-facing symbols; adding `-undefined dynamic_lookup` matches Wine's
+normal module-loading model, while the installed GameHub `x86_64-unix/ntdll.so`
+remains the explicit native dependency. The resulting `lsteamclient.so` is an
+x86_64 Mach-O dylib; it is not staged into Ullage until the matching PE side is
+also available.
+
+The first x86_64 PE link attempt compiled the wrapper objects but stopped before
+linking because the generated dependency list pointed at
+`wine-tools/tools/winegcc/wineg++`, while the disposable tool shim only exposed
+`winegcc`. The GameHub installation does provide `wineg++` as a symlink to
+`winegcc`; the retry adds that exact sibling symlink to the disposable tool shim.
+This is a build-shim completeness issue, and does not require a full Proton
+build.
+
+To add the 32-bit PE target without rebuilding Proton, a second Wine configure
+was started with `--enable-archs=i386,x86_64`. It reached the host and MinGW
+compiler checks, then stopped on an unrelated missing macOS FreeType development
+library. The scoped retry will disable FreeType (and other unused host features)
+while retaining the i386 PE compiler; this is another configure-time dependency,
+not a TIS-100 runtime requirement.
+
+The first full new-machine matrix reproduction used Peggle Deluxe (AppID 3480),
+which the checked-in acceptance matrix records as a known-good 32-bit control.
+Steam downloaded the Windows depot and Ullage installed a healthy mapping, but
+the native Play action only reached `App Running`; the bridge exited with
+`wine_exit=53` and no game surface appeared. The selected GameHub virtual prefix
+was initialized, so the failure is now narrowed to the runtime/prefix launch
+contract rather than depot selection or appinfo mapping. Release publication is
+gated on resolving this reproduction with a matrix title.
+
+### 7. GameHub component inventory and controlled retries
+
+The user's GameHub attempts did provide useful runtime material. The current
+engine inventory contains GameHub's Wine Proton 11.0 runtime, Apple GPTK 3.0-3,
+two newly initialized virtual containers, SandboxFS manifests, and a downloaded
+Windows Steam client component at:
+
+```text
+$HOME/Library/Application Support/com.gamemac.www/wine-engine/downloads/steam_client
+```
+
+That component contains the Windows `Steam.dll`, `Steam2.dll`,
+`steamclient.dll`, `steamclient64.dll`, `tier0_s.dll`, `tier0_s64.dll`,
+`vstdlib_s.dll`, and `vstdlib_s64.dll`, among its other client files. It does
+not contain `lsteamclient`; a search of the GameHub engine after removing the
+temporary test copy found no `lsteamclient` file. The downloaded client is
+therefore useful for satisfying a game's `Steam.dll` lookup, but it is not the
+missing Unix bridge.
+
+GameHub's launch logs supplied the missing prefix contract: a virtual prefix is
+combined with `WINEPREFIX_BASE`, `WINEARCH=win64`, the GameHub Wine/GPTK paths,
+and `DYLD_INSERT_LIBRARIES` containing `libsandboxfs.dylib` plus the exact
+per-container layer manifest. Replaying that contract made a `wine cmd /c ver`
+probe return success and allowed a direct `notepad.exe` launch to create a
+visible Wine window. This isolated the earlier `wow64.dll`/`wine_exit=53`
+failure to the missing SandboxFS/base-prefix handoff rather than a general
+renderer failure.
+
+The first attempt to supply the missing bridge staged Ullage's experimental
+x86_64 `lsteamclient.dll` into the GameHub base prefix. GameHub then loaded that
+file and crashed in `steamclient_init`; its launch logs reported an access
+violation and exit code 5. The file was moved recoverably to:
+
+```text
+$HOME/Developer/ullage-runtime-work/gamehub-staged-lsteamclient-x86_64.dll
+```
+
+and is no longer present in the GameHub base prefix. Its SHA256 matched
+Ullage's current experimental artifact exactly, proving that this was our test
+file and not a GameHub-supplied bridge.
+
+After staging only GameHub's downloaded Steam client symlinks in the disposable
+Peggle virtual prefix and adding that client directory to `WINEDLLPATH`, the
+bridge progressed further: Wine's loader log confirmed that `Steam.dll` loaded.
+The next call, `CreateInterface("SteamClient017")`, entered Ullage's
+`lsteamclient` Unix side and returned an access violation from
+`steamclient_init`. The native Steam client page showed Peggle as Running, but
+no Peggle surface appeared and the bridge exited with code 5. The diagnostic
+record is:
+
+```text
+$HOME/Developer/ullage-runtime-work/diagnostic-peggle-steamdll.log
+$HOME/Developer/ullage-runtime-work/peggle-client-retry-20260826.png
+```
+
+This is now an ABI/runtime compatibility blocker: the lsteamclient module built
+from Valve Proton's pinned Wine source is not yet proven compatible with
+GameHub's modified `wine-11.0-gdbf9021e9406-dirty` runtime. The public GameSir
+Wine checkout used for comparison also has no lsteamclient source of its own,
+so it cannot by itself provide a drop-in replacement. No artifact is safe to
+publish until the same Peggle matrix run produces an actual game surface.
+
+A follow-up loader/layout retry made the blocker more specific. Without a Unix
+sidecar beside the PE bridge, Wine reported that it could not load
+`i386-windows/lsteamclient.so`. Adding temporary symlinks in both architecture
+directories changed that to an explicit `dlopen` error: the native sidecar
+imports `_lstrcpynA`, which GameHub's `x86_64-unix/ntdll.so` does not export.
+The current Unix sidecar therefore is not load-compatible with this Wine
+runtime yet. Those symlinks were test-only and are not a release layout; the
+next build should eliminate or satisfy that symbol dependency before another
+game launch.
+
+The remaining test gate is intentionally concrete: use the exact GameHub
+SandboxFS/base-prefix launch contract, a client payload that loads, and an
+lsteamclient build compatible with this Wine runtime; then verify the Peggle
+window, Steam `App Running`/Stop lifecycle, and a clean bridge log. TIS-100
+(AppID 370360) remains an additional matrix candidate, but its native Play
+path previously failed earlier with Steam's `OS Error 0` because no Ullage
+mapping was installed.
+
+### 8. Successful matrix reproduction after the GameHub remediation
+
+The source-backed Unix sidecar was rebuilt after adding the macOS-only
+`<wchar.h>` include to the source patch itself. The final sidecar is an
+x86_64 Mach-O dylib with SHA256
+`6fce7da81364ba1ee16087a53215f99b3a2989173777f85248b6b1f3a8dd992f` and is
+laid out with the loader-visible `i386-windows`, `x86_64-windows`, and
+`x86_64-unix` directories. The two temporary Unix-side architecture aliases
+are required by this GameHub loader layout and are included in the runtime
+package rather than being treated as a source-tree change.
+
+Using the native Steam helper's Play button, Peggle Deluxe (AppID `3480`)
+then launched through the installed Ullage mapping with
+`PRESERVE_STEAM_TRANSPORT=0`. Steam showed `Peggle Deluxe - Running`; the
+window was titled `Peggle Deluxe 1.01`; and a CoreGraphics capture reached the
+rendered `CLICK TO PLAY!` title screen. The final host capture is:
+
+```text
+/Users/danhimebauch/Developer/ullage-runtime-work/peggle-native-steam-final-title-20260826.png
+```
+
+This is the first successful real game surface from the known-good matrix on
+this Mac. A separate run with `PRESERVE_STEAM_TRANSPORT=1` also created a
+game window but captured black, so clean transport is the working default for
+this host; preserving Steam's injected transport/overlay libraries remains a
+separate compatibility mode.
+
+The native Stop confirmation changed Steam's content log to `Terminating` and
+the Library to `Stopping`, but GameHub's reparented `popcapgame1.exe` did not
+exit automatically. Killing only the exact test tree returned the content log
+to `Fully Installed` at `12:56:09`. This is a genuine lifecycle defect: Ullage
+needs prefix-scoped process-tree tracking or a stronger reaper association,
+and the UI should surface cleanup failure instead of leaving Steam in
+`Stopping`.
+
+### 9. Setup and onboarding improvements indicated by this run
+
+The first-run path should expose a single preflight/doctor result before the
+user presses Play. It should check Rosetta, native Steam, the exact bundled
+`steam_dev.cfg` path, a Windows PE depot, Wine/GPTK, the GameHub base-prefix
+and SandboxFS manifest, client-root files, all architecture-specific
+lsteamclient sidecars, the x64 forwarder, and disk headroom. Each failed
+check should name the missing path and the next action.
+
+The setup wizard should offer an explicit “Windows depot” step, verify a PE
+entry such as `Peggle.exe` or `tis100.exe` before creating a mapping, and
+automatically discover GameHub's launch contract. Mapping records should
+retain the prefix base, `WINEARCH`, SandboxFS manifest/library, client root,
+bridge artifact version, and transport mode so a later launch does not depend
+on hidden machine state.
+
+The artifact path should prefer a signed or checksum-verified prebuilt
+bridge/forwarder release pinned to the Wine/Proton source and patch series.
+Only fall back to a scoped component build when no compatible artifact exists;
+the UI should show the source commit, patch set, compiler architecture, and
+why a full Proton build is not required.
+
+Error reporting should translate the observed failures into actions: `OS Error
+0` means no usable Ullage mapping; `kernel32.dll`/`wow64.dll` means the
+GameHub base-prefix/SandboxFS handoff is incomplete; missing `Steam.dll` means
+the Windows client root is absent; a missing sidecar or `dlopen` symbol names
+the incompatible artifact; a black surface selects clean transport; and a
+stuck `Stopping` state offers “clean this game's Wine tree” with the exact
+prefix and processes shown.
+
+Finally, the wizard should warn when free space falls below a build threshold,
+offer the external volume for source/build/archive storage, and warn that the
+observed FAT32 volume is suitable for disposable artifacts but has filename
+and file-size constraints. Install/remove should be transactional and leave a
+recoverable mapping receipt, so a failed first attempt does not require
+manually undoing Steam depot or prefix state.
