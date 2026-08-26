@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **65**.
-* Remaining to the 30% target: **92**.
+* Unique AppIDs tested in this run: **66**.
+* Remaining to the 30% target: **91**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -38,6 +38,7 @@ will require a user action-time acceptance before they can be exercised.
 | ---: | --- | --- |
 | 558680 | KYOTO TANOJI QUEST | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
 | 6910 | Deus Ex: Game of the Year Edition | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
+| 4023080 | Duskfade Demo | Steam rejected the install with `No licenses`; this account-history entry is not an entitled AppID and is excluded from coverage. |
 
 ## Current run
 
@@ -112,6 +113,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 8380 | Strong Bad Episode 5: 8-Bit Is Enough | win32 | P | P | P | P | Freshly downloaded 177 MB / 185 MB installed Windows-only depot. The 32-bit Telltale title/start surface rendered after its slow splash; native Stop returned cleanly and Steam uninstall plus Ullage removal restored `Homestar105.exe`. |
 | 1999360 | Placid Plastic Duck Simulator | win64 | P | P | P | P | Freshly downloaded 1.48 GB Windows-only Unity depot with `WinAppDataLocalLow` Cloud metadata. Native Steam showed the checked Cloud state; Ullage mapped the root, the duck scene rendered, and two Play/Stop cycles returned cleanly. Steam uninstall plus Ullage removal restored the original launch and removed the owned Cloud link. |
 | 1880620 | Once Upon A KATAMARI | win64 | P | F | P | P | Freshly downloaded 2.7 GB x64 Unity depot with `WinAppDataLocal` Cloud metadata. Native Play reached Running, but the Wine-owned `Application load error 3:0000065432` appeared before `GameAssembly.dll` or the game's `steam_api64.dll` loaded; adding/removing `steam_appid.txt` did not change the result. Native Stop/relaunch remained clean, and the direct Steamworks probe passed initialization, identity, ownership, and DLC enumeration. This is currently a title/runtime startup boundary, not an Ullage launch, mapping, or supervision defect. |
+| 858710 | Gravity Circuit | win64 | P | P | P | P | Freshly downloaded 311 MB nested `win64_steam` depot with `WinAppDataRoaming` Cloud metadata. Native Steam showed the checked Cloud state; the mapped language-selection screen rendered with the native overlay attached. Two native Play/Stop cycles returned to Play, and Steam uninstall plus Ullage removal restored the original launch and removed the owned Cloud link. |
 
 ## Per-title evidence
 
@@ -179,6 +181,7 @@ transcribed here.
 | 8380 | `~/.ullage/logs/8380-strongbad-episode5.log`; `native Steam requested stop`; `reaped_helper_pids=38780 38785 38791 38804 38807 38839 38881`; `reaped_game_pids=none`; `wine_exit=143 signal_received=1` | Native Steam showed App Running; the desktop capture showed the rendered Strong Bad Episode 5 title/start surface. Stop returned the page to Play with no residual Wine/game processes, Steam removed the 177 MB depot, and Ullage restored the original Windows launch entry. |
 | 1999360 | `~/.ullage/logs/1999360-placid-duck.log`; two runs each logged `native Steam requested stop`, seven/eight reaped helper PIDs, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Native Steam showed the checked Cloud state before launch; the desktop capture showed the rendered duck scene, and the native page returned from Stop to Play on both cycles. Ullage removed the `WinAppDataLocalLow` mapping after Steam uninstalled the 1.48 GB depot. |
 | 1880620 | `~/.ullage/logs/1880620-once-upon-a-katamari.log`; repeated runs logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Native Play reached Running twice. Full desktop captures showed the Wine `Steam Error` dialog with `Application load error 3:0000065432`; loader tracing stopped before `GameAssembly.dll` and `steam_api64.dll`. Native Stop returned to Play with no selected-prefix Wine/game processes. A direct staged API probe initialized successfully and matched AppID 1880620, but it is not a game-session acceptance result. |
+| 858710 | `~/.ullage/logs/858710-gravity-circuit.log`; two runs each logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | First desktop capture showed the rendered language-selection surface with `gameoverlayui` attached. Both native Stop confirmations returned the page to Play; Steam uninstalled the 311 MB depot and Ullage restored `win64_steam/GravityCircuit.exe` with no selected-prefix Wine/game processes left. |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every

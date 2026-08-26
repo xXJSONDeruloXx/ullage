@@ -48,6 +48,9 @@ The following behavior is covered by tests or real runs:
 * Katamari Damacy REROLL, JellyCar Worlds, RACCOON, Sonic Mania, and FAR: Lone
   Sails showed the ordinary native Steam Cloud state after mapping. RACCOON
   also completed a reversible changed-file upload round trip.
+* Gravity Circuit exercised a nested x64 depot with `WinAppDataRoaming`; the
+  native page showed the checked Cloud state and the mapping was restored after
+  the depot was uninstalled. No game save was created during that run.
 * A stale local Steam Cloud cache can seed a missing prefix file once when the
   file satisfies the current UFS pattern and size/SHA-1 check. Existing prefix
   files are never overwritten by that seed path.
