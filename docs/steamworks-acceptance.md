@@ -45,6 +45,7 @@ the acceptance criterion.
 | 990630 | The Last Campfire | P | F | I | P (native mapping installed) | P | Fresh Play-button run reached Wine and exited 0 without a visible surface. |
 | 1880620 | Once Upon A KATAMARI | P | F | I | I (mapping installed; no save round trip) | P | Native Play reached Running twice, but Wine reported `Application load error 3:0000065432` before the Unity game assembly or game Steam API DLL loaded. A separate staged API probe passed initialization, identity, ownership, and DLC enumeration; that does not certify the shipped game session. |
 | 858710 | Gravity Circuit | P | P | I | I (mapping and checked badge; no save round trip) | P | Fresh nested x64 depot rendered its language-selection surface with the native overlay attached. Two native Play/Stop cycles returned to Play; the shipped game was not instrumented for API-level feature calls. |
+| 4182710 | Dustin Sunset | P | P | I | not configured | P | Fresh flat x64 Unity depot rendered the title surface with `gameoverlayui` attached. Two native Play/confirmed-Stop cycles returned to Play; no shipped-game Steamworks feature calls or Cloud roots were exercised. |
 
 The `P` lifecycle result means native Steam emitted an `App Running` transition,
 the bridge logged `wine_exit`, and the client returned the AppID to its
