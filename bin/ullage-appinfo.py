@@ -301,6 +301,9 @@ class AppInfo:
         common_os = common.get("oslist")
         result = []
         for key, item in launch.items():
+            entry = str(key)
+            if not entry.isascii() or not entry.isdigit():
+                continue
             if not isinstance(item, dict) or not isinstance(item.get("executable"), str):
                 continue
             executable = item["executable"]
@@ -330,7 +333,7 @@ class AppInfo:
                         continue
             result.append(
                 {
-                    "entry": str(key),
+                    "entry": entry,
                     "executable": executable,
                     "workingdir": workingdir,
                 }

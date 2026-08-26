@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **68**.
-* Remaining to the 30% target: **89**.
+* Unique AppIDs tested in this run: **69**.
+* Remaining to the 30% target: **88**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -53,7 +53,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 990630 | The Last Campfire | win64 | P | P | P | P | User-visible rendered run; Stop clean. |
 | 304430 | INSIDE | win64 | P | P | P | P | Fresh 30s and 50s captures showed the rendered Playdead's INSIDE title surface; native Stop remained clean. |
 | 334940 | Yoku's Island Express | win64 | P | F | P | P | Wine-owned `Steam Error: Application load error 3:0000065432`; no game surface proven. |
-| 356400 | Thumper | win64 | P | F | P | P | Default `THUMPER_win8.exe` reached Steam Running but showed Wine-owned `Application load error 3:0000065432`; native Stop returned cleanly. The chooser's DX9 entry exposed the pre-fix multi-option gap and produced Steam `OS Error`; the installer now redirects all Windows `.exe` options for a fresh retest. |
+| 356400 | Thumper | win64 | P | F | P | P | Fresh retest covered the four installed Windows entries: default and DX9 reached their distinct launchers, and the Steam VR option preserved `-openvr`. All tested options reached the bridge and native Stop returned to Play; the default and DX9 runs still showed Wine-owned `Application load error 3:0000065432`, so the remaining failure is a runtime/title boundary. |
 | 584400 | Sonic Mania | win32 | P | P | P | P | Visible game surface; native Stop confirmed; no Sonic/Wine helpers remained. |
 | 609320 | FAR: Lone Sails | win64 | P | P | P | P | Initial unbridged launch returned Steam `OS Error 0`; adding the missing Ullage mapping for launch entry 0 fixed it. Loading scene and menu rendered; bridge logged `wine_exit=143`. |
 | 3480 | Peggle Deluxe | win32 | P | P | P | P | Visible loading/title screen; Steam warned about 32-bit macOS but Ullage launched and stopped cleanly. |
@@ -116,6 +116,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 858710 | Gravity Circuit | win64 | P | P | P | P | Freshly downloaded 311 MB nested `win64_steam` depot with `WinAppDataRoaming` Cloud metadata. Native Steam showed the checked Cloud state; the mapped language-selection screen rendered with the native overlay attached. Two native Play/Stop cycles returned to Play, and Steam uninstall plus Ullage removal restored the original launch and removed the owned Cloud link. |
 | 4182710 | Dustin Sunset | win64 | P | P | P | P | Freshly downloaded 294 MB flat x64 Unity depot with no Auto-Cloud entries. Native Play reached the rendered title surface with `gameoverlayui` attached; two native Play/confirmed-Stop cycles returned to Play, and Steam uninstall plus Ullage removal restored the original launch. |
 | 403400 | ARCADE GAME SERIES: DIG DUG | win64 | P | P | P | P | Freshly downloaded 763 MB Windows-only x64 Unity depot with `WinAppDataRoaming` Cloud metadata. Native Play reached the rendered auto-save caution surface with `gameoverlayui` attached; native Stop returned to Play with no selected-prefix helpers. Steam uninstall removed the depot and Ullage removal restored the original appinfo launch entry and removed its mapping state. |
+| 1743850 | HYPER DEMON | win64 | P | F | — | P | Freshly downloaded 334 MB Windows-only x64 GLFW/OpenGL depot. Native Play reached Running, but the game emitted `WGL: Failed to create OpenGL context`, showed a black desktop surface, and exited before a native Stop was needed. Direct bounded OpenGL tracing reproduced the WGL context failure; no Ullage launch, path, or supervision defect was found. |
 
 ## Per-title evidence
 
@@ -186,6 +187,8 @@ transcribed here.
 | 858710 | `~/.ullage/logs/858710-gravity-circuit.log`; two runs each logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | First desktop capture showed the rendered language-selection surface with `gameoverlayui` attached. Both native Stop confirmations returned the page to Play; Steam uninstalled the 311 MB depot and Ullage restored `win64_steam/GravityCircuit.exe` with no selected-prefix Wine/game processes left. |
 | 4182710 | `~/.ullage/logs/4182710-dustin-sunset.log`; two runs logged `native Steam requested stop`, `reaped_helper_pids=...`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Fresh Steam Play reached the full rendered Dustin Sunset title surface with `gameoverlayui` attached. Both native Stop confirmations returned the page to Play; Steam removed the 294 MB depot and Ullage restored `Dustin Sunset.exe` with no selected-prefix Wine/game processes left. |
 | 403400 | `~/.ullage/logs/403400-dig-dug.log`; `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Native Play reached Running; the desktop capture showed the rendered DIG DUG auto-save caution surface. Stop returned the page to Play with no selected-prefix Wine/game processes. Steam removed the 763 MB depot; Ullage removed the mapping state and restored the original launch entry (the uninstalled depot itself is intentionally absent). |
+| 356400 | `~/.ullage/logs/356400-thumper-multilaunch-fix.log`; default, DX9, and `-openvr` runs logged the selected executable/arguments and native Steam stop; `wine_exit=143 signal_received=1` | Fresh appinfo exposed four installed Windows entries. Native Steam launched the default, DX9, and Steam VR chooser options through Ullage; process inspection observed `THUMPER_win8.exe -openvr`. Each tested Stop returned to Play, Steam removed the depot, and Ullage restored all four original launch entries with no active per-entry launchers. |
+| 1743850 | `~/.ullage/logs/1743850-hyper-demon.log`; `wine_exit=5 signal_received=0` | Native Play showed Running, then the game's `steamuser.log` recorded `WGL: Failed to create OpenGL context`; a bounded direct OpenGL trace reproduced the failure. The process exited naturally, no native Stop was needed, and no bridge/Wine/game processes remained after cleanup. |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every

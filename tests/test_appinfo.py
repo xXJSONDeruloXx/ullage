@@ -223,6 +223,7 @@ def main():
                         "3": {"executable": "C:\\outside.exe", "workingdir": "bin"},
                         "4": {"executable": "/tmp/outside.exe", "workingdir": "bin"},
                         "5": {"executable": "bin\\Link.exe", "workingdir": "bin"},
+                        "../escape": {"executable": "bin\\Game.exe", "workingdir": "bin"},
                     }
                 },
             }

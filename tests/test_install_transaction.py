@@ -143,7 +143,7 @@ def remove(case):
     )
 
 
-def exercise(launches, expected_launchers, expected_game_dirs):
+def exercise(launches, expected_launchers, expected_game_dirs, expected_executables):
     with tempfile.TemporaryDirectory(prefix="ullage-install-it.") as directory:
         case = make_case(Path(directory), launches)
         install(case)
@@ -151,22 +151,28 @@ def exercise(launches, expected_launchers, expected_game_dirs):
         state_file = case["state"] / "config" / "games" / "42.launch.json"
         state = json.loads(state_file.read_text(encoding="utf-8"))
         assert [entry["entry"] for entry in state["entries"]] == expected_launchers
-        for entry, game_dir in zip(expected_launchers, expected_game_dirs):
+        for entry, game_dir, executable in zip(
+            expected_launchers, expected_game_dirs, expected_executables
+        ):
             launcher = case["state"] / "launchers" / f"42-entry-{entry}.sh"
             if len(expected_launchers) == 1:
                 launcher = case["state"] / "launchers" / "42.sh"
             text = launcher.read_text(encoding="utf-8")
             assert f"--game-dir '{case['install'] / game_dir}'" in text
+            assert f"--game-exe '{case['install'] / executable}'" in text
 
         launch = appinfo_launches(case["steam"] / "appcache" / "appinfo.vdf")
         for entry in expected_launchers:
             assert launch[entry]["executable"].endswith(f"42-entry-{entry}.sh")
+        for entry, item in launches["appinfo"]["config"]["launch"].items():
+            assert launch[entry].get("arguments") == item.get("arguments")
         remove(case)
 
         restored = appinfo_launches(case["steam"] / "appcache" / "appinfo.vdf")
         for entry, item in launches["appinfo"]["config"]["launch"].items():
             assert restored[entry].get("executable") == item.get("executable")
         assert not state_file.exists()
+        assert not list((case["state"] / "launchers").glob("42-entry-*.sh"))
 
 
 def main():
@@ -185,14 +191,23 @@ def main():
             "config": {
                 "launch": {
                     "0": {"executable": "bin\\Game.exe", "workingdir": "bin"},
-                    "1": {"executable": "tools\\Mode.exe", "workingdir": "tools"},
-                    "2": {"executable": "missing.exe"},
+                    "1": {
+                        "executable": "tools\\Mode.exe",
+                        "workingdir": "tools",
+                        "arguments": "-openvr",
+                    },
+                    "2": {"executable": "missing.exe", "arguments": "-oculus"},
                     "3": {"executable": "Game.app", "config": {"oslist": "macos"}},
                 }
             },
         }
     }
-    exercise(multi, ["0", "1"], ["bin", "tools"])
+    exercise(
+        multi,
+        ["0", "1"],
+        ["bin", "tools"],
+        ["bin/Game.exe", "tools/Mode.exe"],
+    )
 
     single = {
         "appinfo": {
