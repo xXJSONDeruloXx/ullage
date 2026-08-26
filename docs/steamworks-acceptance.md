@@ -48,6 +48,7 @@ the acceptance criterion.
 | 4182710 | Dustin Sunset | P | P | I | not configured | P | Fresh flat x64 Unity depot rendered the title surface with `gameoverlayui` attached. Two native Play/confirmed-Stop cycles returned to Play; no shipped-game Steamworks feature calls or Cloud roots were exercised. |
 | 403400 | ARCADE GAME SERIES: DIG DUG | P | P | I | I (mapping and checked badge; no save round trip) | P | Fresh Windows-only x64 Unity depot rendered its auto-save caution surface with `gameoverlayui` attached. Native Stop returned to Play and Steam uninstall plus Ullage removal completed cleanly; the shipped game's Steamworks feature calls were not instrumented. |
 | 1743850 | HYPER DEMON | P | F | I | not configured | P | Native Play reached Running, but GLFW/OpenGL context creation failed before a usable game surface. No shipped-game Steamworks calls or Cloud roots were exercised; natural exit cleanup passed and native Stop was not needed. |
+| 292280 | SPY Fox in: Cheese Chase | P | P | I | I (`gameinstall` mapping; no save round trip) | P | Fresh 32-bit ScummVM Windows depot. Native Play reached the rendered title scene with `gameoverlayui` attached; two native Stop cycles returned to Play and left no selected-prefix processes. The native mapper installed and restored the `gameinstall` root, but no Cloud transfer or shipped-game API feature was deliberately exercised. |
 
 The `P` lifecycle result means native Steam emitted an `App Running` transition,
 the bridge logged `wine_exit`, and the client returned the AppID to its

@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **69**.
-* Remaining to the 30% target: **88**.
+* Unique AppIDs tested in this run: **70**.
+* Remaining to the 30% target: **87**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -39,6 +39,8 @@ will require a user action-time acceptance before they can be exercised.
 | 558680 | KYOTO TANOJI QUEST | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
 | 6910 | Deus Ex: Game of the Year Edition | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
 | 4023080 | Duskfade Demo | Steam rejected the install with `No licenses`; this account-history entry is not an entitled AppID and is excluded from coverage. |
+| 261180 | Lethal League | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
+| 455400 | PAC-MAN 256 | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
 
 ## Current run
 
@@ -117,6 +119,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 4182710 | Dustin Sunset | win64 | P | P | P | P | Freshly downloaded 294 MB flat x64 Unity depot with no Auto-Cloud entries. Native Play reached the rendered title surface with `gameoverlayui` attached; two native Play/confirmed-Stop cycles returned to Play, and Steam uninstall plus Ullage removal restored the original launch. |
 | 403400 | ARCADE GAME SERIES: DIG DUG | win64 | P | P | P | P | Freshly downloaded 763 MB Windows-only x64 Unity depot with `WinAppDataRoaming` Cloud metadata. Native Play reached the rendered auto-save caution surface with `gameoverlayui` attached; native Stop returned to Play with no selected-prefix helpers. Steam uninstall removed the depot and Ullage removal restored the original appinfo launch entry and removed its mapping state. |
 | 1743850 | HYPER DEMON | win64 | P | F | — | P | Freshly downloaded 334 MB Windows-only x64 GLFW/OpenGL depot. Native Play reached Running, but the game emitted `WGL: Failed to create OpenGL context`, showed a black desktop surface, and exited before a native Stop was needed. Direct bounded OpenGL tracing reproduced the WGL context failure; no Ullage launch, path, or supervision defect was found. |
+| 292280 | SPY Fox in: Cheese Chase | win32 | P | P | P | P | Freshly downloaded 140 MB ScummVM Windows depot with a `gameinstall` Cloud root. The first-run ScummVM update prompt was dismissed, the title scene rendered, and native Steam overlay attachment was observed. Two native Play/confirmed-Stop cycles returned to Play with no selected-prefix processes; Steam uninstall and Ullage removal restored the original launch entry while preserving the 16 KB `Saves` directory. |
 
 ## Per-title evidence
 
@@ -189,6 +192,7 @@ transcribed here.
 | 403400 | `~/.ullage/logs/403400-dig-dug.log`; `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | Native Play reached Running; the desktop capture showed the rendered DIG DUG auto-save caution surface. Stop returned the page to Play with no selected-prefix Wine/game processes. Steam removed the 763 MB depot; Ullage removed the mapping state and restored the original launch entry (the uninstalled depot itself is intentionally absent). |
 | 356400 | `~/.ullage/logs/356400-thumper-multilaunch-fix.log`; default, DX9, and `-openvr` runs logged the selected executable/arguments and native Steam stop; `wine_exit=143 signal_received=1` | Fresh appinfo exposed four installed Windows entries. Native Steam launched the default, DX9, and Steam VR chooser options through Ullage; process inspection observed `THUMPER_win8.exe -openvr`. Each tested Stop returned to Play, Steam removed the depot, and Ullage restored all four original launch entries with no active per-entry launchers. |
 | 1743850 | `~/.ullage/logs/1743850-hyper-demon.log`; `wine_exit=5 signal_received=0` | Native Play showed Running, then the game's `steamuser.log` recorded `WGL: Failed to create OpenGL context`; a bounded direct OpenGL trace reproduced the failure. The process exited naturally, no native Stop was needed, and no bridge/Wine/game processes remained after cleanup. |
+| 292280 | `~/.ullage/logs/292280-spy-fox.log`; two native Stop requests each ended with `wine_exit=143 signal_received=1` and no selected-prefix processes | Fresh appinfo exposed the Windows ScummVM entry and `gameinstall` Cloud root. Native Play reached the ScummVM prompt and then the rendered title scene; the second Play cycle also reached Running. Both Stop confirmations returned the page to Play; Steam removed the depot and Ullage restored `ScummVM_Windows\\scummvm.exe`, while the generated `Saves` directory was preserved. |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every
