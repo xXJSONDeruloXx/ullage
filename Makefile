@@ -11,14 +11,16 @@ bin/ullage-fd-exec: src/ullage-fd-exec.c
 
 check:
 	@set -eu; \
-	for script in bin/ullage-bridge bin/ullage-install bin/ullage-remove bin/ullage-reap; do \
+	for script in bin/ullagectl bin/ullage-bridge bin/ullage-install bin/ullage-remove bin/ullage-reap; do \
 		sh -n "$$script"; \
 	done
 	@sh tests/test_install_options.sh
-	@$(PYTHON3) -m py_compile bin/*.py tests/*.py
+	@$(PYTHON3) -m py_compile bin/*.py bin/ullage tests/*.py
+	@bin/ullagectl --help >/dev/null
 	@$(PYTHON3) bin/ullage-appinfo.py --help >/dev/null
 	@$(PYTHON3) bin/ullage-mapping.py --help >/dev/null
 	@$(PYTHON3) tests/test_appinfo.py
+	@$(PYTHON3) tests/test_cli.py
 	@$(PYTHON3) tests/test_mapping.py
 	@$(PYTHON3) tests/test_paths.py
 	@$(PYTHON3) tests/test_reap.py

@@ -41,6 +41,7 @@ regenerated from recorded state.
 | Area | Owner |
 | --- | --- |
 | Windows depot selection and verification | native Steam |
+| Guarded depot-mode configuration | Ullage CLI; native Steam applies it |
 | Play/Stop, AppID, session, playtime, and overlay | native Steam |
 | Auto-Cloud transfer, badge, and conflict policy | native Steam |
 | Local launch mapping and guarded cleanup | Ullage |
@@ -50,6 +51,13 @@ regenerated from recorded state.
 Generated launchers, config, backups, prefixes, and logs are runtime state
 under `~/.ullage` by default. The repository is source and provenance, not a
 runtime data directory.
+
+The machine-facing boundary is `bin/ullagectl`. It is a thin JSON facade over
+the existing helpers: it discovers GameHub runtimes, installed depots, and
+cached not-installed Windows-capable catalog entries, builds read-only install
+plans, delegates guarded mutations, and translates
+helper failures into stable error codes. A separate UI may depend on this
+facade, but it must not reproduce Steam, GameHub, AppInfo, or mapping logic.
 
 ## Lifecycle
 
@@ -79,7 +87,8 @@ The state root is separate from the checkout:
 
 ~~~text
 repository/                 source, tests, runtime contract
-~/.ullage/                  launchers, configs, backups, prefixes, logs
+~/.ullage/                  launchers, configs, backups, prefixes, logs,
+                            sessions/<appid>/last.json receipts
 Steam/appcache/appinfo.vdf  native Steam's local control-plane cache
 ~~~
 
@@ -87,6 +96,8 @@ Steam/appcache/appinfo.vdf  native Steam's local control-plane cache
 
 * `bin/ullage-install` / `bin/ullage-remove` — install and restore the launch
   mapping.
+* `bin/ullagectl` / `bin/ullage` — versioned JSON discovery, planning, and
+  mutation facade for machine callers.
 * `bin/ullage-mapping.py` — status and conservative repair.
 * `bin/ullage-bridge` — hot launch and process supervision boundary.
 * `bin/ullage-reap` — prefix-scoped cleanup.

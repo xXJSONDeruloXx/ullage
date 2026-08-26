@@ -38,9 +38,10 @@ This remains an experimental compatibility boundary, not a claim that every
 Windows game or renderer works.
 
 The current host uses Steam's global
-`@sSteamCmdForcePlatformType windows` setting to obtain Windows depots. Native
-Cloud remains Steam-owned; Ullage does not fake the Cloud badge or implement a
-second transfer service.
+`@sSteamCmdForcePlatformType windows` setting to obtain Windows depots. The
+versioned CLI can set or clear that directive while Steam is stopped; native
+Cloud remains Steam-owned and Ullage does not fake the Cloud badge or implement
+a second transfer service.
 
 ## Start here
 
@@ -51,10 +52,17 @@ checks with:
 make check
 ~~~
 
+The separate GUI uses the versioned machine interface at `bin/ullagectl`. It
+owns runtime and Steam-library discovery and returns JSON; the GUI does not
+call the lower-level mapping or AppInfo tools directly. See the
+[CLI contract](docs/cli.md) for the command and error surface.
+
 ## Documentation
 
 * [Usage](docs/usage.md) — prerequisites, installation, repair, removal, and
   lifecycle behavior.
+* [CLI contract](docs/cli.md) — versioned JSON commands for ullage-gui and
+  other machine callers.
 * [Architecture](docs/architecture.md) — ownership boundaries, state layout,
   source map, and design constraints.
 * [Native saves](docs/native-saves.md) — supported roots, live evidence, and

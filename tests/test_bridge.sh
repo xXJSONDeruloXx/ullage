@@ -97,6 +97,7 @@ make_case() {
     : >"$steam_root/logs/content_log.txt"
     : >"$case_root/game/test.exe"
     config=$case_root/config
+    state_home=$case_root/state
     log=$case_root/bridge.log
     legacy_cloud_marker=$case_root/legacy-cloud-hook-ran
     printf '%s\n' \
@@ -109,6 +110,7 @@ make_case() {
         "WINE_ROOT='$wine_root'" \
         "GPTK_ROOT='$gptk_root'" \
         "BRIDGE_ROOT='$bridge_root'" \
+        "STATE_HOME='$state_home'" \
         "FD_EXEC='$TEMP_ROOT/fd-exec'" \
         "REAPER='$TEMP_ROOT/reaper'" \
         "LOG_FILE='$log'" \
@@ -120,6 +122,7 @@ make_case() {
         "WINEMSYNC_VALUE='1'" >"$config"
     CASE_CONFIG=$config
     CASE_LOG=$log
+    CASE_RECEIPT=$state_home/sessions/42/last.json
     CASE_PREFIX=$prefix
     CASE_STEAM_LOG=$steam_root/logs/content_log.txt
     CASE_BRIDGE_ROOT=$bridge_root
@@ -136,6 +139,9 @@ set -e
     exit 1
 }
 grep -F 'wine_exit=7 signal_received=0' "$CASE_LOG" >/dev/null
+[ -f "$CASE_RECEIPT" ]
+grep -F '"api_version": 1' "$CASE_RECEIPT" >/dev/null
+grep -F '"prefix_clean": true' "$CASE_RECEIPT" >/dev/null
 grep -F -- '-w:' "$CASE_PREFIX/wineserver-events" >/dev/null
 [ ! -e "$CASE_LEGACY_CLOUD_MARKER" ] || {
     printf '%s\n' 'legacy Cloud hook unexpectedly ran' >&2

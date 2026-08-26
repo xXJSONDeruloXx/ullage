@@ -6,15 +6,15 @@ button invokes an external launcher. Steam must be fully quit while
 
 ## Requirements
 
-* Native macOS Steam configured to retain Windows depots. On macOS, put the
-  following line in
-  `$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steam_dev.cfg`:
+* Native macOS Steam configured to retain Windows depots. With Steam fully
+  stopped, the machine interface can manage the bundled client setting:
 
-  ~~~text
-  @sSteamCmdForcePlatformType windows
+  ~~~sh
+  bin/ullagectl steam set-depot-mode windows --json
   ~~~
 
-  Ullage does not edit this setting or manage depot selection.
+  Use `native` to remove the global Windows-depot directive. The setting is
+  picked up after the next Steam restart.
 * A prepared Wine prefix with `system.reg`. Use one prefix per AppID while the
   lifecycle and reaper work remains experimental.
 * Wine, GPTK/D3DMetal, and compatible lsteamclient artifacts matching the
@@ -36,6 +36,23 @@ quit because it edits only a temporary appcache:
 ~~~sh
 make integration
 ~~~
+
+## Machine-facing commands
+
+For discovery, setup screens, and diagnostics, use the versioned JSON facade:
+
+~~~sh
+bin/ullagectl doctor --json
+bin/ullagectl runtime list --json
+bin/ullagectl library --json
+bin/ullagectl plan APPID --json
+bin/ullagectl steam set-depot-mode windows --json
+~~~
+
+The separate GUI should call `ullagectl` only. It should use the returned
+runtime and launch-plan objects instead of learning GameHub paths or parsing
+the output of the lower-level scripts. See the [CLI contract](cli.md) for
+response fields, states, error codes, and mutation behavior.
 
 ## Install
 

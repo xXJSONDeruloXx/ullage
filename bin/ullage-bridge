@@ -7,6 +7,7 @@ SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 HOME_VALUE=${HOME:-/tmp}
 STATE_HOME=${ULLAGE_STATE_DIR:-$HOME_VALUE/.ullage}
+PYTHON3_VALUE=${PYTHON3:-python3}
 
 die() {
     printf 'ullage-bridge: %s\n' "$*" >&2
@@ -242,6 +243,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+ULLAGE_RUNTIME_ID=${ULLAGE_RUNTIME_ID:-${RUNTIME_ID:-}}
 [ -n "$APP_ID" ] || die "missing --appid"
 [ -n "$GAME_EXE" ] || die "missing --game-exe"
 [ -n "$WINE_ROOT" ] || die "set --wine-root or WINE_ROOT"
@@ -390,6 +392,11 @@ if [ "$DRY_RUN" = 1 ]; then
 fi
 
 mkdir -p "$(dirname "$LOG_FILE")"
+SESSION_DIR="$STATE_HOME/sessions/$APP_ID"
+RECEIPT_FILE="$SESSION_DIR/last.json"
+RECEIPT_TMP="$RECEIPT_FILE.tmp.$$"
+SESSION_STARTED=$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)
+mkdir -p "$SESSION_DIR"
 USER_VALUE=${USER:-$(id -un)}
 LOGNAME_VALUE=${LOGNAME:-$USER_VALUE}
 LANG_VALUE=${LANG:-en_US.UTF-8}
@@ -469,6 +476,11 @@ WINE_CHILD_PID=
 WINE_SERVER_WAIT_PID=
 STEAM_STOP_WATCH_PID=
 SIGNAL_RECEIVED=0
+NATIVE_STOP_OBSERVED=0
+REAPED_HELPER_COUNT=0
+REAPED_GAME_COUNT=0
+PREFIX_CLEAN=0
+STOP_MARKER="$SESSION_DIR/native-stop.$$.marker"
 WINE_GAME_ROOT=$(printf 'Z:%s' "$GAME_DIR" | /usr/bin/sed 's|/|\\|g')
 
 stop_steam_stop_watch() {
@@ -506,6 +518,7 @@ start_steam_stop_watch() {
                     then
                         printf '[ullage-bridge] native Steam requested stop for appid=%s\n' \
                             "$APP_ID" >>"$LOG_FILE"
+                        : >"$STOP_MARKER"
                         kill -TERM "$watch_bridge_pid" 2>/dev/null || true
                         exit 0
                     fi
@@ -610,17 +623,113 @@ wait_and_reap() {
     stop_steam_stop_watch
     trap - HUP INT TERM
 
+    reaper_output=
     if [ "$SIGNAL_RECEIVED" = 1 ]; then
-        "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" \
-            --game-root "$GAME_DIR" --kill-game-processes >>"$LOG_FILE" 2>&1 ||
+        reaper_output=$(
+            "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" \
+                --game-root "$GAME_DIR" --kill-game-processes 2>&1
+        ) || {
+            printf '%s\n' "$reaper_output" >>"$LOG_FILE"
             printf '[ullage-bridge] reaper failed for prefix=%s\n' "$PREFIX" >>"$LOG_FILE"
+        }
     else
-        "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" >>"$LOG_FILE" 2>&1 ||
+        reaper_output=$(
+            "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" 2>&1
+        ) || {
+            printf '%s\n' "$reaper_output" >>"$LOG_FILE"
             printf '[ullage-bridge] reaper failed for prefix=%s\n' "$PREFIX" >>"$LOG_FILE"
+        }
+    fi
+    printf '%s\n' "$reaper_output" >>"$LOG_FILE"
+    helper_ids=$(printf '%s\n' "$reaper_output" | /usr/bin/sed -n 's/^reaped_helper_pids=//p' | /usr/bin/tail -1)
+    game_ids=$(printf '%s\n' "$reaper_output" | /usr/bin/sed -n 's/^reaped_game_pids=//p' | /usr/bin/tail -1)
+    case "$helper_ids" in
+        ''|none) REAPED_HELPER_COUNT=0 ;;
+        *) set -- $helper_ids; REAPED_HELPER_COUNT=$# ;;
+    esac
+    case "$game_ids" in
+        ''|none) REAPED_GAME_COUNT=0 ;;
+        *) set -- $game_ids; REAPED_GAME_COUNT=$# ;;
+    esac
+    PREFIX_CLEAN=1
+    residual_pids=$(
+        /bin/ps -axo pid=,command= -ww 2>/dev/null |
+            /usr/bin/awk -v self="$$" -v root="$PREFIX" '
+                $1 != self && index($0, "/awk ") == 0 && index($0, root) { print $1 }
+            '
+    )
+    if [ -n "$residual_pids" ]; then
+        PREFIX_CLEAN=0
     fi
     printf '[ullage-bridge] wine_exit=%s signal_received=%s\n' \
         "$wine_exit" "$SIGNAL_RECEIVED" >>"$LOG_FILE"
+    write_receipt "$wine_exit"
     return "$wine_exit"
+}
+
+write_receipt() {
+    wine_exit_value=$1
+    native_stop_value=0
+    [ -f "$STOP_MARKER" ] && native_stop_value=1
+    ULLAGE_RECEIPT_APPID="$APP_ID" \
+    ULLAGE_RECEIPT_ENTRY="${LAUNCH_ENTRY:-}" \
+    ULLAGE_RECEIPT_ARCH="$ARCH" \
+    ULLAGE_RECEIPT_RUNTIME="${ULLAGE_RUNTIME_ID:-$WINE_ROOT}" \
+    ULLAGE_RECEIPT_STARTED="$SESSION_STARTED" \
+    ULLAGE_RECEIPT_WINE_EXIT="$wine_exit_value" \
+    ULLAGE_RECEIPT_SIGNAL="$SIGNAL_RECEIVED" \
+    ULLAGE_RECEIPT_NATIVE_STOP="$native_stop_value" \
+    ULLAGE_RECEIPT_HELPERS="$REAPED_HELPER_COUNT" \
+    ULLAGE_RECEIPT_GAMES="$REAPED_GAME_COUNT" \
+    ULLAGE_RECEIPT_PREFIX_CLEAN="$PREFIX_CLEAN" \
+    ULLAGE_RECEIPT_LOG="$LOG_FILE" \
+    "$PYTHON3_VALUE" - "$RECEIPT_TMP" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+
+def integer(name):
+    return int(os.environ.get(name, "0"))
+
+
+def boolean(name):
+    return os.environ.get(name, "0") == "1"
+
+
+receipt = {
+    "api_version": 1,
+    "appid": integer("ULLAGE_RECEIPT_APPID"),
+    "entry": os.environ.get("ULLAGE_RECEIPT_ENTRY") or None,
+    "arch": os.environ.get("ULLAGE_RECEIPT_ARCH") or None,
+    "runtime": os.environ.get("ULLAGE_RECEIPT_RUNTIME") or None,
+    "started": os.environ.get("ULLAGE_RECEIPT_STARTED"),
+    "ended": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    "native_stop_observed": boolean("ULLAGE_RECEIPT_NATIVE_STOP"),
+    "wine_exit": integer("ULLAGE_RECEIPT_WINE_EXIT"),
+    "signal_received": boolean("ULLAGE_RECEIPT_SIGNAL"),
+    "reaped_game_processes": integer("ULLAGE_RECEIPT_GAMES"),
+    "reaped_helpers": integer("ULLAGE_RECEIPT_HELPERS"),
+    "prefix_clean": boolean("ULLAGE_RECEIPT_PREFIX_CLEAN"),
+    "last_stop": {
+        "requested": boolean("ULLAGE_RECEIPT_NATIVE_STOP"),
+        "wine_exit": integer("ULLAGE_RECEIPT_WINE_EXIT"),
+        "signal_received": boolean("ULLAGE_RECEIPT_SIGNAL"),
+        "reaped_game_processes": integer("ULLAGE_RECEIPT_GAMES"),
+        "reaped_helpers": integer("ULLAGE_RECEIPT_HELPERS"),
+        "prefix_clean": boolean("ULLAGE_RECEIPT_PREFIX_CLEAN"),
+        "log": os.environ.get("ULLAGE_RECEIPT_LOG") or None,
+    },
+}
+
+with open(sys.argv[1], "w", encoding="utf-8") as stream:
+    json.dump(receipt, stream, indent=2, sort_keys=True)
+    stream.write("\n")
+PY
+    chmod 600 "$RECEIPT_TMP"
+    mv "$RECEIPT_TMP" "$RECEIPT_FILE"
+    rm -f "$STOP_MARKER"
 }
 
 launch_clean() {

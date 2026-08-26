@@ -541,3 +541,40 @@ This gives two known-good matrix reproductions on the new Mac: Peggle Deluxe
 through native Steam Play and returned to the installed Play state after native
 Stop. The remaining host gap is optional MinGW probe coverage; it is not
 required for the tested launch/renderer/Stop path.
+
+### 12. Machine-interface onboarding
+
+The first GUI-facing discovery pass found two practical integration hazards.
+GameHub's virtual-container registry does not repeat the Wine installation ID
+on every virtual container; the ID is inherited from the base container. Also,
+older single-entry Ullage state records use `entry` at the top level while
+newer multi-launch records use an `entries` array. Treating either shape as
+the only shape made healthy Peggle and TIS-100 mappings appear to have no
+Windows launch option. `ullagectl` now resolves both shapes and reads the
+GameHub registry inheritance in core.
+
+The separate GUI must therefore use `bin/ullagectl` for runtime and library
+discovery. It should not infer GameHub paths, inspect `appinfo.vdf`, or parse
+the text output of `ullage-install` and `ullage-remove`. The new read-only
+`plan` response is the source for a Configure screen, and all handled errors
+carry stable codes such as `steam_running`, `runtime_incomplete`,
+`prefix_missing`, and `mapping_stale`.
+
+### 13. Compact GUI onboarding
+
+The first compact GUI pass exposed two practical issues. A large persistent
+sidebar/detail layout hid the per-game runner choice and had no visible place
+for the global Windows-depot setting. It was replaced with a small
+launcher-style list: installed games are the default view, a filter exposes
+cached not-installed entries, and selecting a game opens its runner picker and
+prepare/repair controls. The Steam status pill opens the guarded depot-mode
+control, while runtime checks remain behind the gear popover.
+
+An initial implementation tried to identify not-installed games by walking
+`Steam/userdata/*/config/localconfig.vdf`. The packaged app could block in
+that directory under macOS privacy handling even though the same command ran
+from a terminal. The GUI then appeared to refresh forever. The core now uses
+the already-loaded `appcache/appinfo.vdf` records for a responsive cached
+catalog, marks those records `not_installed`, and documents that the cache is
+not proof of ownership. The search field is therefore part of the minimal
+launcher surface rather than an optional diagnostic.

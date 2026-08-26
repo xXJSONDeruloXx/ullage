@@ -10,6 +10,7 @@ PATH_TOOL="$SCRIPT_DIR/ullage-path.py"
 CLOUD_NATIVE_TOOL="$SCRIPT_DIR/ullage-cloud-native.py"
 HOME_VALUE=${HOME:-/tmp}
 STATE_HOME=${ULLAGE_STATE_DIR:-$HOME_VALUE/.ullage}
+RUNTIME_ID=${ULLAGE_RUNTIME_ID:-}
 
 die() {
     printf 'ullage-install: %s\n' "$*" >&2
@@ -461,6 +462,7 @@ fi
 
 {
     printf 'APP_ID=%s\n' "$(shell_quote "$APP_ID")"
+    printf 'RUNTIME_ID=%s\n' "$(shell_quote "$RUNTIME_ID")"
     printf 'LAUNCH_ENTRY=%s\n' "$(shell_quote "$LAUNCH_ENTRY")"
     printf 'STATE_HOME=%s\n' "$(shell_quote "$STATE_HOME")"
     printf 'GAME_EXE=%s\n' "$(shell_quote "$TARGET")"

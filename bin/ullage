@@ -1,0 +1,1634 @@
+#!/usr/bin/env python3
+"""Versioned machine interface for the Ullage launch-boundary tools.
+
+This command is intentionally a small facade.  The existing shell and Python
+helpers remain the implementation; this file owns only discovery, planning,
+stable JSON, and error translation for callers such as ullage-gui.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import platform
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+API_VERSION = 1
+SCHEMA = API_VERSION  # Kept as an internal name for older callers of this module.
+WINDOWS_DEPOT_DIRECTIVE = "@sSteamCmdForcePlatformType windows"
+CAPABILITIES = [
+    "multi_launch",
+    "mapping_repair",
+    "native_cloud",
+    "gamehub_runtime",
+    "steam_depot_mode",
+    "library_catalog",
+    "steam_stop_watch",
+    "structured_diagnostics",
+]
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+DEFAULT_STEAM_ROOT = Path.home() / "Library/Application Support/Steam"
+DEFAULT_STATE_ROOT = Path(os.environ.get("ULLAGE_STATE_DIR", Path.home() / ".ullage")).expanduser()
+
+
+def load_module(name: str, filename: str):
+    spec = importlib.util.spec_from_file_location(name, SCRIPT_DIR / filename)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load Ullage module: {filename}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+APPINFO = load_module("ullage_appinfo_cli", "ullage-appinfo.py")
+MAPPING = load_module("ullage_mapping_cli", "ullage-mapping.py")
+CLOUD = load_module("ullage_cloud_cli", "ullage-cloud-native.py")
+
+
+class CLIError(Exception):
+    """A user-facing machine-interface error."""
+
+
+def output(command: str, payload: dict, ok: bool = True) -> int:
+    result = {"api_version": API_VERSION, "command": command, "ok": ok}
+    result.update(payload)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if ok else 1
+
+
+RECOVERABLE_ERRORS = {
+    "steam_running",
+    "steam_not_found",
+    "windows_depot_missing",
+    "mapping_stale",
+    "runtime_missing",
+    "runtime_incomplete",
+    "prefix_missing",
+    "forwarder_missing",
+}
+
+
+def error_code(message: str, default: str = "command_failed") -> str:
+    """Translate internal helper text to a stable machine-facing code."""
+
+    text = message.casefold()
+    if "quit native steam" in text or "steam must be fully quit" in text:
+        return "steam_running"
+    if "steam appinfo cache is missing" in text or "native steam" in text and "missing" in text:
+        return "steam_not_found"
+    if "windows depot" in text or "forceplatformtype windows" in text:
+        return "windows_depot_missing"
+    if "no windows" in text or "no usable launch" in text or "no executable" in text:
+        return "no_usable_launch"
+    if "stale" in text or "steam rewrote" in text:
+        return "mapping_stale"
+    if "foreign" in text or "changed outside ullage" in text:
+        return "mapping_foreign"
+    if "generated config" in text or "generated state" in text:
+        return "mapping_broken"
+    if "prefix" in text and ("missing" in text or "does not exist" in text or "initialized" in text):
+        return "prefix_missing"
+    if "steamclient64.dll" in text or "forwarder" in text:
+        return "forwarder_missing"
+    if any(value in text for value in ("wine", "gptk", "lsteamclient", "sandboxfs")):
+        return "runtime_incomplete"
+    if "cloud" in text and ("unsupported" in text or "not supported" in text):
+        return "cloud_unsupported"
+    return default
+
+
+def failure(
+    command: str,
+    message: str,
+    code: str | None = None,
+    appid: int | None = None,
+    recoverable: bool | None = None,
+) -> int:
+    code = code or error_code(message)
+    if recoverable is None:
+        recoverable = code in RECOVERABLE_ERRORS
+    payload = {
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": recoverable,
+        }
+    }
+    if appid is not None:
+        payload["appid"] = appid
+    return output(command, payload, ok=False)
+
+
+def expand(path: str | Path) -> Path:
+    return Path(path).expanduser()
+
+
+def run(
+    argv: list[str],
+    timeout: float | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise CLIError(str(exc)) from exc
+
+
+def vdf_value(key: str, contents: str) -> str | None:
+    pattern = rf'"{re.escape(key)}"\s+"((?:\\.|[^"])*)"'
+    match = re.search(pattern, contents)
+    if not match:
+        return None
+    return match.group(1).replace(r'\"', '"').replace(r"\\", "\\")
+
+
+def process_snapshot() -> list[dict[str, str]]:
+    result = run(["/bin/ps", "-axo", "pid=,comm=,args="])
+    processes = []
+    for line in result.stdout.splitlines():
+        fields = line.strip().split(None, 2)
+        if len(fields) < 2:
+            continue
+        processes.append(
+            {
+                "pid": fields[0],
+                "executable": fields[1],
+                "command": fields[2] if len(fields) == 3 else fields[1],
+            }
+        )
+    return processes
+
+
+def is_steam_process(process: dict[str, str]) -> bool:
+    names = set()
+    for value in (process.get("executable", ""), process.get("command", "")):
+        first_word = value.split(None, 1)[0] if value else ""
+        names.add(Path(first_word).name.casefold())
+    return bool(names & {"steam_osx", "steam", "steam.app"})
+
+
+def steam_processes() -> list[dict[str, str]]:
+    """Return only native Steam processes from one process snapshot."""
+
+    return [process for process in process_snapshot() if is_steam_process(process)]
+
+
+def steam_config_path(steam_root: Path) -> Path:
+    candidates = [
+        steam_root / "Steam.AppBundle/Steam/Contents/MacOS/steam_dev.cfg",
+        steam_root / "steam_dev.cfg",
+    ]
+    return next((candidate for candidate in candidates if candidate.is_file()), candidates[0])
+
+
+def windows_depot_configured(steam_root: Path) -> bool:
+    config = steam_config_path(steam_root)
+    try:
+        contents = config.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return any(
+        line.strip() in (WINDOWS_DEPOT_DIRECTIVE, f'"{WINDOWS_DEPOT_DIRECTIVE}"')
+        for line in contents.splitlines()
+    )
+
+
+def set_windows_depot_mode(steam_root: Path, mode: str) -> Path:
+    """Set Steam's global depot directive while native Steam is stopped."""
+
+    if mode not in {"windows", "native"}:
+        raise CLIError(f"unsupported Steam depot mode: {mode}")
+    if steam_running():
+        raise CLIError("Native Steam must be fully quit before changing depot mode.")
+
+    config = steam_config_path(steam_root)
+    try:
+        contents = config.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        contents = ""
+    except OSError as exc:
+        raise CLIError(f"could not read Steam depot configuration: {exc}") from exc
+
+    lines = [
+        line
+        for line in contents.splitlines()
+        if line.strip() not in (WINDOWS_DEPOT_DIRECTIVE, f'"{WINDOWS_DEPOT_DIRECTIVE}"')
+    ]
+    if mode == "windows":
+        lines.append(WINDOWS_DEPOT_DIRECTIVE)
+    updated = "\n".join(lines)
+    if updated:
+        updated += "\n"
+
+    try:
+        config.parent.mkdir(parents=True, exist_ok=True)
+        temporary = config.with_name(f".{config.name}.{os.getpid()}.tmp")
+        temporary.write_text(updated, encoding="utf-8")
+        os.replace(temporary, config)
+    except OSError as exc:
+        if "temporary" in locals() and temporary.exists():
+            temporary.unlink()
+        raise CLIError(f"could not write Steam depot configuration: {exc}") from exc
+    return config
+
+
+def steam_status(steam_root: Path) -> dict:
+    processes = steam_processes()
+    configured = windows_depot_configured(steam_root)
+    config = steam_config_path(steam_root)
+    active = "unknown"
+    if processes and any(
+        WINDOWS_DEPOT_DIRECTIVE in process["command"]
+        for process in processes
+    ):
+        active = "windows"
+    detail = (
+        "Steam is stopped; Windows depot mode is configured."
+        if not processes and configured
+        else "Steam is stopped; Windows depot mode is not configured."
+        if not processes
+        else "Steam is running with a verified Windows depot flag."
+        if active == "windows"
+        else "Steam is running; configuration is present but active depot mode is not verified."
+        if configured
+        else "Steam is running without a verified Windows depot mode."
+    )
+    bundle = steam_root / "Steam.AppBundle/Steam/Contents/MacOS/steam_osx"
+    if not bundle.is_file():
+        bundle = Path("/Applications/Steam.app/Contents/MacOS/steam_osx")
+    if not bundle.is_file():
+        bundle = Path("/Applications/Steam.app")
+    return {
+        "process": "running" if processes else "stopped",
+        "pids": [int(process["pid"]) for process in processes if process["pid"].isdigit()],
+        "windows_depot_configured": configured,
+        "active_depot_mode": active,
+        "config_file": str(config),
+        "executable": str(bundle),
+        "detail": detail,
+    }
+
+
+def steam_running() -> bool:
+    return bool(steam_processes())
+
+
+def newest_directory(directory: Path, prefix: str | None = None) -> Path | None:
+    try:
+        entries = [entry for entry in directory.iterdir() if entry.is_dir()]
+    except OSError:
+        return None
+    if prefix is not None:
+        entries = [entry for entry in entries if entry.name.startswith(prefix)]
+    if not entries:
+        return None
+    return max(entries, key=lambda entry: entry.stat().st_mtime)
+
+
+def json_file(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def argument_path(args: argparse.Namespace, name: str) -> Path | None:
+    value = getattr(args, name, None)
+    return expand(value) if value else None
+
+
+def bridge_root_for(args: argparse.Namespace, state_root: Path) -> Path | None:
+    explicit = argument_path(args, "bridge_root")
+    if explicit:
+        return explicit
+    from_environment = os.environ.get("ULLAGE_BRIDGE_ROOT")
+    if from_environment:
+        return expand(from_environment)
+    candidates = [
+        state_root / "runtime/lsteamclient",
+        REPO_ROOT / "runtime/lsteamclient",
+        newest_directory(REPO_ROOT.parent / "ullage-runtime-work", "ullage-bridge-artifacts-"),
+    ]
+    return next((candidate for candidate in candidates if candidate and candidate.is_dir()), None)
+
+
+def newest_file(directory: Path) -> Path | None:
+    try:
+        files = [entry for entry in directory.iterdir() if entry.is_file()]
+    except OSError:
+        return None
+    if not files:
+        return None
+    return max(files, key=lambda entry: entry.stat().st_mtime)
+
+
+def gamehub_runtime_profiles(args: argparse.Namespace, state_root: Path) -> list[dict]:
+    """Read GameHub's registry without making the GUI depend on its layout."""
+
+    root = Path.home() / "Library/Application Support/com.gamemac.www/wine-engine"
+    installations = json_file(root / "container/wine_installations.json").get("wine_installations", {})
+    containers = json_file(root / "container/wine_containers.json").get("containers", {})
+    virtuals = json_file(root / "container/wine_virtual_containers.json").get("virtual_containers", {})
+    if not isinstance(installations, dict):
+        installations = {}
+    if not isinstance(containers, dict):
+        containers = {}
+    if not isinstance(virtuals, dict):
+        virtuals = {}
+
+    bridge_root = bridge_root_for(args, state_root)
+    default_gptk = newest_directory(root / "downloads", "gptk-")
+    profiles: list[dict] = []
+    for key, virtual in virtuals.items():
+        if not isinstance(virtual, dict):
+            continue
+        base_id = str(virtual.get("base_container_id", ""))
+        base = containers.get(base_id, {})
+        if not isinstance(base, dict):
+            base = {}
+        installation_id = str(virtual.get("wine_installation_id") or base.get("wine_installation_id", ""))
+        installation = installations.get(installation_id, {})
+        if not isinstance(installation, dict):
+            installation = {}
+        wine_root = expand(installation.get("install_path")) if installation.get("install_path") else None
+        if wine_root is None and installation_id:
+            wine_root = root / "containers/wine_installations" / installation_id
+
+        graphics = virtual.get("graphics_stack_config", {})
+        if not isinstance(graphics, dict):
+            graphics = {}
+        gptk_value = graphics.get("install_path")
+        gptk_root = expand(gptk_value) if gptk_value else default_gptk
+
+        prefix_base_value = base.get("prefix_path")
+        prefix_value = virtual.get("prefix_path")
+        prefix_base = expand(prefix_base_value) if prefix_base_value else None
+        prefix = expand(prefix_value) if prefix_value else None
+        environment = virtual.get("environment", {})
+        if not isinstance(environment, dict):
+            environment = {}
+        wine_arch = environment.get("WINEARCH")
+        if wine_arch not in {"win32", "win64"}:
+            wine_arch = "win64" if virtual.get("architecture") == "x86_64" else None
+
+        layer_manifest = newest_file((prefix / ".gamehub/layer-manifests") if prefix else Path("/does-not-exist"))
+        sandboxfs_lib_value = os.environ.get("ULLAGE_SANDBOXFS_LIB")
+        sandboxfs_lib = expand(sandboxfs_lib_value) if sandboxfs_lib_value else Path(
+            "/Applications/GameHub.app/Contents/Resources/libsandboxfs.dylib"
+        )
+        if not sandboxfs_lib.is_file():
+            sandboxfs_lib = None
+
+        runtime_id = f"gamehub-container-{key}"
+        profile = {
+            "id": runtime_id,
+            "name": str(virtual.get("name") or f"GameHub container {key}"),
+            "provider": "gamehub",
+            "wine_root": str(wine_root) if wine_root else None,
+            "gptk_root": str(gptk_root) if gptk_root else None,
+            "prefix": str(prefix) if prefix else None,
+            "prefix_base": str(prefix_base) if prefix_base else None,
+            "wine_arch": wine_arch,
+            "sandboxfs": bool(layer_manifest and sandboxfs_lib),
+            "sandboxfs_manifest": str(layer_manifest) if layer_manifest else None,
+            "sandboxfs_lib": str(sandboxfs_lib) if sandboxfs_lib else None,
+            "bridge_root": str(bridge_root) if bridge_root else None,
+            "supports": ["win32", "win64"] if virtual.get("architecture") == "x86_64" else [],
+            "last_used": virtual.get("last_used", 0),
+            "default": bool(virtual.get("is_default", False)),
+        }
+        profiles.append(profile)
+
+    if profiles:
+        return profiles
+
+    for key, installation in installations.items():
+        if not isinstance(installation, dict):
+            continue
+        wine_root_value = installation.get("install_path")
+        wine_root = expand(wine_root_value) if wine_root_value else root / "containers/wine_installations" / str(key)
+        profiles.append(
+            {
+                "id": f"gamehub-wine-{key}",
+                "name": str(installation.get("name") or f"GameHub Wine {key}"),
+                "provider": "gamehub",
+                "wine_root": str(wine_root),
+                "gptk_root": str(default_gptk) if default_gptk else None,
+                "prefix": None,
+                "prefix_base": None,
+                "wine_arch": "win64" if installation.get("architecture") == "x86_64" else None,
+                "sandboxfs": False,
+                "sandboxfs_manifest": None,
+                "sandboxfs_lib": None,
+                "bridge_root": str(bridge_root) if bridge_root else None,
+                "supports": ["win32", "win64"] if installation.get("architecture") == "x86_64" else [],
+                "last_used": installation.get("last_used", 0),
+                "default": bool(installation.get("is_default", False)),
+            }
+        )
+    return profiles
+
+
+def configured_runtime_profile(args: argparse.Namespace, state_root: Path) -> dict | None:
+    explicit_bridge = argument_path(args, "bridge_root")
+    roots = {
+        "wine_root": argument_path(args, "wine_root"),
+        "gptk_root": argument_path(args, "gptk_root"),
+        "bridge_root": explicit_bridge or bridge_root_for(args, state_root),
+    }
+    if not any((roots["wine_root"], roots["gptk_root"], explicit_bridge)) and not any(
+        os.environ.get(name) for name in ("ULLAGE_WINE_ROOT", "ULLAGE_GPTK_ROOT", "ULLAGE_BRIDGE_ROOT")
+    ):
+        return None
+    return {
+        "id": str(getattr(args, "runtime", None) or "configured-runtime"),
+        "name": "Configured runtime",
+        "provider": "configured",
+        "wine_root": str(roots["wine_root"]) if roots["wine_root"] else None,
+        "gptk_root": str(roots["gptk_root"]) if roots["gptk_root"] else None,
+        "prefix": str(argument_path(args, "prefix")) if argument_path(args, "prefix") else None,
+        "prefix_base": str(argument_path(args, "wine_prefix_base")) if argument_path(args, "wine_prefix_base") else None,
+        "wine_arch": getattr(args, "wine_arch", None),
+        "sandboxfs": bool(argument_path(args, "sandboxfs_manifest") and argument_path(args, "sandboxfs_lib")),
+        "sandboxfs_manifest": str(argument_path(args, "sandboxfs_manifest")) if argument_path(args, "sandboxfs_manifest") else None,
+        "sandboxfs_lib": str(argument_path(args, "sandboxfs_lib")) if argument_path(args, "sandboxfs_lib") else None,
+        "supports": ["win32", "win64"],
+        "last_used": 0,
+        "default": True,
+    }
+
+
+def runtime_checks(profile: dict) -> list[dict]:
+    wine_root = expand(profile["wine_root"]) if profile.get("wine_root") else None
+    gptk_root = expand(profile["gptk_root"]) if profile.get("gptk_root") else None
+    bridge_root = expand(profile["bridge_root"]) if profile.get("bridge_root") else None
+    checks: list[dict] = []
+    if platform.machine().lower() in {"arm64", "aarch64"}:
+        rosetta = run(["/usr/bin/arch", "-x86_64", "/usr/bin/true"]).returncode == 0
+        checks.append(
+            {
+                "id": "rosetta",
+                "label": "Rosetta 2",
+                "status": "ready" if rosetta else "missing",
+                "required": True,
+                "path": "/usr/bin/arch",
+                "remediation": "Install Rosetta 2 before using an x86_64 Wine runtime." if not rosetta else "",
+            }
+        )
+    checks.extend(
+        [
+            check_record("wine", "Wine runtime", wine_root / "bin/wine" if wine_root else None, remediation="Select a Wine/Proton installation with bin/wine."),
+            check_record("wineserver", "Wine server", wine_root / "bin/wineserver" if wine_root else None, remediation="Select a matching Wine/Proton installation with bin/wineserver."),
+            check_record("gptk", "GPTK / D3DMetal", gptk_root / "external/libd3dshared.dylib" if gptk_root else None, remediation="Select a GPTK runtime containing external/libd3dshared.dylib."),
+            check_record("lsteamclient-unix", "lsteamclient Unix sidecar", bridge_root / "x86_64-unix/lsteamclient.so" if bridge_root else None, remediation="Install a compatible x86_64-unix/lsteamclient.so artifact."),
+            check_record("lsteamclient-win32", "lsteamclient x86", bridge_root / "i386-windows/lsteamclient.dll" if bridge_root else None, remediation="Install the matching i386-windows/lsteamclient.dll artifact."),
+            check_record("lsteamclient-win64", "lsteamclient x64", bridge_root / "x86_64-windows/lsteamclient.dll" if bridge_root else None, remediation="Install the matching x86_64-windows/lsteamclient.dll artifact."),
+            check_record("steamclient64-forwarder", "steamclient64 forwarder", bridge_root / "x86_64-windows/steamclient64.dll" if bridge_root else None, remediation="Install the canonical-name x64 Steam client forwarder."),
+        ]
+    )
+    if profile.get("prefix"):
+        checks.append(check_record("prefix", "Wine prefix", expand(profile["prefix"]), remediation="Choose an initialized Wine prefix.", directory=True))
+        checks.append(check_record("prefix-system-reg", "Wine prefix registry", expand(profile["prefix"]) / "system.reg", remediation="Initialize the selected Wine prefix."))
+    return checks
+
+
+def decorate_runtime(profile: dict) -> dict:
+    checks = runtime_checks(profile)
+    required = [item for item in checks if item["required"]]
+    result = dict(profile)
+    result.pop("last_used", None)
+    result.pop("default", None)
+    result["checks"] = checks
+    result["status"] = "ready" if all(item["status"] == "ready" for item in required) else "incomplete"
+    return result
+
+
+def runtime_profiles(args: argparse.Namespace, state_root: Path) -> list[dict]:
+    configured = configured_runtime_profile(args, state_root)
+    profiles = gamehub_runtime_profiles(args, state_root)
+    if configured:
+        return [decorate_runtime(configured), *[decorate_runtime(profile) for profile in profiles]]
+    profiles = [decorate_runtime(profile) for profile in profiles]
+    profiles.sort(key=lambda profile: (profile["status"] == "ready", profile["id"]), reverse=True)
+    return profiles
+
+
+def selected_runtime_profile(
+    args: argparse.Namespace,
+    state_root: Path,
+    profiles: list[dict] | None = None,
+) -> dict | None:
+    profiles = profiles if profiles is not None else runtime_profiles(args, state_root)
+    requested = getattr(args, "runtime", None)
+    if requested:
+        for profile in profiles:
+            if requested in {profile["id"], profile["name"]}:
+                return profile
+        raise CLIError(f"runtime was not found: {requested}")
+    return profiles[0] if profiles else None
+
+
+def runtime_roots(args: argparse.Namespace, state_root: Path) -> tuple[Path | None, Path | None, Path | None]:
+    profile = selected_runtime_profile(args, state_root)
+    if profile:
+        return tuple(
+            expand(profile[name]) if profile.get(name) else None
+            for name in ("wine_root", "gptk_root", "bridge_root")
+        )  # type: ignore[return-value]
+    return None, None, bridge_root_for(args, state_root)
+
+
+def check_record(
+    identifier: str,
+    label: str,
+    path: Path | None,
+    required: bool = True,
+    directory: bool = False,
+    remediation: str = "",
+) -> dict:
+    exists = bool(path and (path.is_dir() if directory else path.is_file()))
+    return {
+        "id": identifier,
+        "label": label,
+        "status": "ready" if exists else "missing",
+        "required": required,
+        "path": str(path) if path else None,
+        "remediation": remediation if not exists else "",
+    }
+
+
+def runtime_status(args: argparse.Namespace, state_root: Path) -> dict:
+    profiles = runtime_profiles(args, state_root)
+    selected = selected_runtime_profile(args, state_root, profiles)
+    checks = selected["checks"] if selected else runtime_checks({})
+    return {
+        "selected": selected["id"] if selected else None,
+        "profiles": profiles,
+        "name": selected["name"] if selected else "No runtime discovered",
+        "wine_root": selected.get("wine_root") if selected else None,
+        "gptk_root": selected.get("gptk_root") if selected else None,
+        "bridge_root": selected.get("bridge_root") if selected else None,
+        "prefix": selected.get("prefix") if selected else None,
+        "checks": checks,
+        "ready": bool(selected) and all(item["status"] == "ready" for item in checks if item["required"]),
+    }
+
+
+def system_status(args: argparse.Namespace) -> dict:
+    steam_root = expand(args.steam_root)
+    state_root = expand(args.state_dir)
+    steam = steam_status(steam_root)
+    runtime = runtime_status(args, state_root)
+    steam_check = check_record(
+        "steam",
+        "Native Steam",
+        Path(steam["executable"]),
+        remediation="Install native Steam or set --steam-root to its data root.",
+    )
+    depot_check = check_record(
+        "windows-depot",
+        "Windows depot configuration",
+        Path(steam["config_file"]),
+        remediation="Add @sSteamCmdForcePlatformType windows to the bundled Steam steam_dev.cfg.",
+    )
+    depot_check["status"] = "ready" if steam["windows_depot_configured"] else "missing"
+    checks = [steam_check, depot_check, *runtime["checks"]]
+    return {
+        "status": "ready" if all(item["status"] == "ready" for item in checks if item["required"]) else "needs_setup",
+        "requires_steam_stopped": True,
+        "can_mutate": steam["process"] == "stopped" and runtime["ready"],
+        "steam_root": str(steam_root),
+        "state_root": str(state_root),
+        "steam": steam,
+        "runtime": runtime,
+        "checks": checks,
+    }
+
+
+def manifest_game(manifest: Path, library_root: Path) -> dict | None:
+    try:
+        contents = manifest.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        appid = int(vdf_value("appid", contents) or "")
+        name = vdf_value("name", contents) or f"AppID {appid}"
+        install_name = vdf_value("installdir", contents) or ""
+        state_flags = int(vdf_value("StateFlags", contents) or "0")
+    except ValueError:
+        return None
+    if appid <= 0 or not install_name or state_flags & 4 != 4:
+        return None
+    return {
+        "appid": appid,
+        "name": name,
+        "install_dir": library_root / "steamapps/common" / install_name,
+        "oslist": (vdf_value("OSList", contents) or "").lower(),
+    }
+
+
+def read_config(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+    for line in lines:
+        match = re.match(r"^([A-Z0-9_]+)=(.*)$", line)
+        if not match:
+            continue
+        try:
+            parsed = shlex.split(match.group(2), comments=False, posix=True)
+        except ValueError:
+            continue
+        if len(parsed) == 1:
+            values[match.group(1)] = parsed[0]
+    return values
+
+
+def load_state(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def oslist_has(value: object, target: str) -> bool:
+    return target in {part.strip().lower() for part in str(value or "").split(",")}
+
+
+def pe_architecture(path: Path) -> str | None:
+    file_tool = shutil.which("file") or "/usr/bin/file"
+    try:
+        result = subprocess.run([file_tool, "-b", str(path)], capture_output=True, text=True, check=False)
+    except OSError:
+        result = None
+    description = result.stdout if result else ""
+    if "PE32+" in description:
+        return "win64"
+    if "PE32 executable" in description:
+        return "win32"
+    try:
+        with path.open("rb") as stream:
+            if stream.read(2) == b"MZ":
+                return "unknown-pe"
+    except OSError:
+        pass
+    return None
+
+
+def mapping_state_entries(state: dict) -> dict[str, dict]:
+    entries = state.get("entries")
+    if isinstance(entries, list):
+        return {
+            str(item.get("entry")): item
+            for item in entries
+            if isinstance(item, dict) and item.get("entry") is not None
+        }
+    if state.get("entry") is not None:
+        return {str(state["entry"]): state}
+    return {}
+
+
+def disabled_state_entries(state: dict) -> dict[str, dict]:
+    entries = state.get("disabled")
+    if not isinstance(entries, list):
+        return {}
+    return {
+        str(item.get("entry")): item
+        for item in entries
+        if isinstance(item, dict) and item.get("entry") is not None
+    }
+
+
+def launch_entries(appinfo, appid: int, install_dir: Path, state: dict) -> list[dict]:
+    try:
+        app = appinfo.records[appid].sections["appinfo"]
+        common = app.get("common", {})
+        launch = app["config"]["launch"]
+    except (KeyError, TypeError):
+        return []
+    state_entries = mapping_state_entries(state)
+    disabled_entries = disabled_state_entries(state)
+    options = []
+    def launch_sort_key(pair: tuple[object, object]) -> tuple[int, object]:
+        entry = str(pair[0])
+        return (0, int(entry)) if entry.isdigit() else (1, entry)
+
+    for key, item in sorted(launch.items(), key=launch_sort_key):
+        entry = str(key)
+        if not entry.isdigit() or not isinstance(item, dict):
+            continue
+        config = item.get("config", {})
+        oslist = config.get("oslist") if isinstance(config, dict) else None
+        if oslist is None:
+            oslist = common.get("oslist") if isinstance(common, dict) else None
+        recorded = state_entries.get(entry, {})
+        executable = recorded.get("original") or item.get("executable")
+        if not isinstance(executable, str) or not executable:
+            continue
+        disabled = disabled_entries.get(entry)
+        if disabled:
+            original_config = disabled.get("original_config")
+            if isinstance(original_config, dict):
+                oslist = original_config.get("oslist")
+        if not oslist_has(oslist, "windows"):
+            continue
+        is_pe = executable.lower().endswith(".exe")
+        path = APPINFO._depot_path(install_dir, executable) if is_pe else None
+        reasons = []
+        architecture = None
+        if not is_pe:
+            reasons.append("Ullage supports Windows PE .exe launch entries only")
+        elif path is None:
+            reasons.append("executable path is outside the Steam install root")
+        elif path.is_symlink() or not path.is_file():
+            reasons.append("executable is not present in the installed depot")
+        else:
+            architecture = pe_architecture(path)
+            if architecture is None:
+                reasons.append("installed target is not a Windows PE executable")
+        workingdir = item.get("workingdir", "")
+        if not isinstance(workingdir, str):
+            workingdir = ""
+        if workingdir:
+            working_path = APPINFO._depot_path(install_dir, workingdir)
+            if working_path is None or working_path.is_symlink() or not working_path.is_dir():
+                reasons.append("working directory is not present in the installed depot")
+        description = item.get("description") or item.get("type") or f"Entry {entry}"
+        arguments = item.get("arguments") or item.get("commandline") or ""
+        options.append(
+            {
+                "entry": entry,
+                "title": str(description),
+                "executable": executable,
+                "current_executable": item.get("executable", ""),
+                "arguments": str(arguments) if isinstance(arguments, str) else "",
+                "working_directory": workingdir,
+                "path": str(path) if path else None,
+                "arch": architecture,
+                "architecture": architecture,
+                "available": not reasons,
+                "usable": not reasons,
+                "reason": "; ".join(reasons),
+            }
+        )
+    return options
+
+
+def native_variant_present(appinfo, appid: int, install_dir: Path) -> bool:
+    try:
+        app = appinfo.records[appid].sections["appinfo"]
+        common = app.get("common", {})
+        launch = app["config"]["launch"]
+    except (KeyError, TypeError):
+        return False
+    for item in launch.values():
+        if not isinstance(item, dict):
+            continue
+        config = item.get("config", {})
+        oslist = config.get("oslist") if isinstance(config, dict) else None
+        if oslist is None and isinstance(common, dict):
+            oslist = common.get("oslist")
+        executable = item.get("executable")
+        if oslist_has(oslist, "macos") and isinstance(executable, str):
+            path = APPINFO._depot_path(install_dir, executable)
+            if path and path.exists():
+                return True
+            if executable.endswith(".app") and (install_dir / executable).exists():
+                return True
+    return False
+
+
+def cloud_record(appinfo, appid: int, config: dict[str, str], state_root: Path) -> dict:
+    supported: list[str] = []
+    unsupported: list[str] = []
+    try:
+        supported = CLOUD.supported_roots(appinfo, appid)
+        unsupported = CLOUD.unsupported_windows_roots(appinfo, appid)
+    except Exception:
+        pass
+    state_file = state_root / "config/games" / f"{appid}.cloud.json"
+    configured = config.get("CLOUD_NATIVE") == "1" and state_file.is_file()
+    if configured:
+        status = "healthy"
+        mode = "native"
+    elif supported:
+        status = "available"
+        mode = "not_configured"
+    else:
+        status = "not_supported" if not unsupported else "unsupported_root"
+        mode = "not_configured"
+    return {
+        "mode": mode,
+        "status": status,
+        "supported_roots": supported,
+        "unsupported_roots": unsupported,
+        "state_file": str(state_file) if state_file.exists() else None,
+    }
+
+
+def mapping_record(appid: int, steam_root: Path, state_root: Path) -> tuple[dict, dict, dict]:
+    paths = MAPPING._paths(state_root, appid)
+    try:
+        info = MAPPING.inspect_mapping(
+            steam_root / "appcache/appinfo.vdf",
+            paths["state_file"],
+            paths["config_file"],
+            paths["launcher"],
+            expected_appid=appid,
+        )
+    except Exception as exc:
+        info = {"status": "unavailable", "reason": str(exc)}
+    state = load_state(paths["state_file"])
+    config = read_config(paths["config_file"])
+    return info, state, config
+
+
+def game_record(
+    game: dict,
+    appinfo,
+    steam_root: Path,
+    state_root: Path,
+    diagnostics: bool = False,
+) -> dict:
+    appid = game["appid"]
+    mapping, state, config = mapping_record(appid, steam_root, state_root)
+    options = launch_entries(appinfo, appid, game["install_dir"], state) if appinfo else []
+    usable = [option for option in options if option["available"]]
+    windows_depot_present = any(option.get("path") for option in options)
+    native = native_variant_present(appinfo, appid, game["install_dir"]) if appinfo else False
+    mapping_status = mapping.get("status", "unavailable")
+    if mapping_status == "healthy":
+        availability = "ready" if usable else "broken"
+    elif mapping_status == "missing":
+        availability = "available" if usable else "native" if native else "unsupported"
+    elif mapping_status == "stale":
+        availability = "stale"
+    elif mapping_status in {"broken", "foreign", "invalid", "unavailable"}:
+        availability = "broken"
+    else:
+        availability = "unsupported"
+    result = {
+        "appid": appid,
+        "name": game["name"],
+        "installed": True,
+        "install_dir": str(game["install_dir"]),
+        "state": availability,
+        "mapping": mapping,
+        "mapping_status": mapping_status,
+        "mapping_reason": mapping.get("reason", ""),
+        "windows_depot_present": bool(windows_depot_present),
+        "windows_depot": bool(windows_depot_present),
+        "launch_options": options,
+        "runtime": {
+            "name": "GameHub Wine" if "com.gamemac.www" in config.get("WINE_ROOT", "") else "Configured runtime",
+            "wine_root": config.get("WINE_ROOT"),
+            "gptk_root": config.get("GPTK_ROOT"),
+            "bridge_root": config.get("BRIDGE_ROOT"),
+            "prefix": config.get("PREFIX"),
+            "architecture": config.get("ARCH"),
+            "transport": "preserved" if config.get("PRESERVE_STEAM_TRANSPORT") == "1" else "clean",
+            "runtime_id": config.get("RUNTIME_ID"),
+        },
+        "cloud": cloud_record(appinfo, appid, config, state_root) if appinfo else {
+            "mode": "not_configured",
+            "status": "unavailable",
+            "supported_roots": [],
+            "unsupported_roots": [],
+            "state_file": None,
+        },
+    }
+    if diagnostics:
+        result["diagnostics"] = diagnostics_record(result, config, state_root)
+    return result
+
+
+def diagnostics_record(game: dict, config: dict[str, str], state_root: Path) -> dict:
+    receipt_file = state_root / "sessions" / str(game["appid"]) / "last.json"
+    receipt = json_file(receipt_file)
+    log_file = Path(config["LOG_FILE"]).expanduser() if config.get("LOG_FILE") else None
+    text = ""
+    if log_file:
+        try:
+            with log_file.open("rb") as stream:
+                stream.seek(max(0, log_file.stat().st_size - 131072))
+                text = stream.read().decode("utf-8", errors="replace")
+        except OSError:
+            pass
+    def last_line(fragment: str) -> str | None:
+        return next((line for line in reversed(text.splitlines()) if fragment in line), None)
+
+    exit_line = last_line("wine_exit=")
+    exit_match = re.search(r"wine_exit=([0-9]+)", exit_line or "")
+    signal_match = re.search(r"signal_received=([01])", exit_line or "")
+    helper_line = last_line("reaped_helper_pids=")
+    game_line = last_line("reaped_game_pids=")
+    residual = []
+    install_dir = game.get("install_dir")
+    prefix = game.get("runtime", {}).get("prefix")
+    for process in process_snapshot():
+        command = process["command"]
+        if (install_dir and install_dir in command) or (prefix and prefix in command):
+            residual.append(process)
+    last_stop = receipt.get("last_stop") if isinstance(receipt.get("last_stop"), dict) else {}
+    if not last_stop:
+        last_stop = {
+            "requested": last_line("native Steam requested stop") is not None,
+            "wine_exit": int(exit_match.group(1)) if exit_match else None,
+            "signal_received": signal_match.group(1) == "1" if signal_match else None,
+            "reaped_helpers": helper_line.split("=", 1)[1].strip() if helper_line else None,
+            "reaped_games": game_line.split("=", 1)[1].strip() if game_line else None,
+            "log": str(log_file) if log_file else None,
+        }
+    result = {
+        "mapping": "healthy" if game.get("state") == "ready" else game.get("mapping", {}).get("status"),
+        "steamworks_bridge": "ready" if game.get("windows_depot") else "not_ready",
+        "steam_transport": game.get("runtime", {}).get("transport", "unknown"),
+        "steam_cloud": game.get("cloud", {}).get("status", "unavailable"),
+        "last_stop": last_stop,
+        "receipt": str(receipt_file) if receipt else None,
+        "residual_processes": residual,
+    }
+    if receipt:
+        result["last_run"] = receipt
+    return result
+
+
+def load_appinfo(steam_root: Path):
+    path = steam_root / "appcache/appinfo.vdf"
+    if not path.is_file():
+        return None
+    try:
+        return APPINFO.AppInfo(path)
+    except (OSError, APPINFO.AppInfoError):
+        return None
+
+
+def installed_games(steam_root: Path) -> list[dict]:
+    games = []
+    library_file = steam_root / "steamapps/libraryfolders.vdf"
+    try:
+        document = CLOUD._read_vdf_dict(library_file)
+    except (OSError, ValueError):
+        document = {}
+    folders = document.get("libraryfolders", {}) if isinstance(document, dict) else {}
+    manifest_paths: list[tuple[Path, Path]] = []
+    if isinstance(folders, dict):
+        for folder in folders.values():
+            if not isinstance(folder, dict) or not folder.get("path"):
+                continue
+            root = expand(folder["path"])
+            apps = folder.get("apps", {})
+            if not isinstance(apps, dict):
+                continue
+            for appid in apps:
+                if str(appid).isdigit():
+                    manifest_paths.append((root / "steamapps" / f"appmanifest_{appid}.acf", root))
+    if not manifest_paths:
+        # Test fixtures and older clients may omit libraryfolders.vdf. Only
+        # scan the configured Steam root in that fallback, never every volume.
+        try:
+            manifests = sorted((steam_root / "steamapps").glob("appmanifest_*.acf"))
+        except OSError:
+            manifests = []
+        manifest_paths = [(manifest, steam_root) for manifest in manifests]
+
+    seen: set[str] = set()
+    for manifest, root in manifest_paths:
+        key = str(manifest)
+        if key in seen:
+            continue
+        seen.add(key)
+        game = manifest_game(manifest, root)
+        if game:
+            games.append(game)
+    return sorted(games, key=lambda item: item["name"].casefold())
+
+
+def installed_game(steam_root: Path, appid: int) -> dict | None:
+    return next((item for item in installed_games(steam_root) if item["appid"] == appid), None)
+
+
+def catalog_launch_entries(appinfo, appid: int) -> list[dict]:
+    """Describe Windows launches without pretending an uninstalled depot exists."""
+
+    try:
+        app = appinfo.records[appid].sections["appinfo"]
+        common = app.get("common", {})
+        launch = app["config"]["launch"]
+    except (KeyError, TypeError):
+        return []
+    common_os = common.get("oslist") if isinstance(common, dict) else None
+    options = []
+    for key, item in launch.items():
+        entry = str(key)
+        if not entry.isdigit() or not isinstance(item, dict):
+            continue
+        executable = item.get("executable")
+        if not isinstance(executable, str) or not executable.lower().endswith(".exe"):
+            continue
+        config = item.get("config", {})
+        oslist = config.get("oslist") if isinstance(config, dict) else None
+        if oslist is None:
+            oslist = common_os
+        if not oslist_has(oslist, "windows"):
+            continue
+        workingdir = item.get("workingdir", "")
+        if not isinstance(workingdir, str):
+            workingdir = ""
+        arguments = item.get("arguments") or item.get("commandline") or ""
+        options.append(
+            {
+                "entry": entry,
+                "title": str(item.get("description") or item.get("type") or f"Entry {entry}"),
+                "executable": executable,
+                "current_executable": executable,
+                "arguments": str(arguments) if isinstance(arguments, str) else "",
+                "working_directory": workingdir,
+                "path": None,
+                "arch": None,
+                "architecture": None,
+                "available": False,
+                "usable": False,
+                "reason": "game is not installed",
+            }
+        )
+    return sorted(options, key=lambda item: (0, int(item["entry"])) if item["entry"].isdigit() else (1, item["entry"]))
+
+
+def not_installed_game_record(appinfo, appid: int, name: str) -> dict | None:
+    options = catalog_launch_entries(appinfo, appid)
+    if not options:
+        return None
+    return {
+        "appid": appid,
+        "name": name,
+        "installed": False,
+        "install_dir": None,
+        "state": "not_installed",
+        "mapping": {"status": "missing", "reason": "game is not installed"},
+        "mapping_status": "missing",
+        "mapping_reason": "game is not installed",
+        "windows_depot_present": False,
+        "windows_depot": False,
+        "launch_options": options,
+        "runtime": {
+            "name": "Not configured",
+            "wine_root": None,
+            "gptk_root": None,
+            "bridge_root": None,
+            "prefix": None,
+            "architecture": None,
+            "transport": "unknown",
+            "runtime_id": None,
+        },
+        "cloud": {
+            "mode": "not_configured",
+            "status": "unavailable",
+            "supported_roots": [],
+            "unsupported_roots": [],
+            "state_file": None,
+        },
+        "source": "steam-appinfo-cache",
+    }
+
+
+def not_installed_games(appinfo, installed: list[dict]) -> list[dict]:
+    if appinfo is None:
+        return []
+    installed_ids = {game["appid"] for game in installed}
+    games = []
+    for appid in sorted(set(appinfo.records) - installed_ids):
+        try:
+            common = appinfo.records[appid].sections["appinfo"].get("common", {})
+        except KeyError:
+            continue
+        if not isinstance(common, dict) or str(common.get("type", "game")).casefold() not in {"game", "application"}:
+            continue
+        name = str(common.get("name") or f"AppID {appid}")
+        record = not_installed_game_record(appinfo, appid, name)
+        if record:
+            games.append(record)
+    return sorted(games, key=lambda item: item["name"].casefold())
+
+
+def resolve_appid(args: argparse.Namespace) -> int:
+    value = getattr(args, "appid_option", None)
+    if value is None:
+        value = getattr(args, "appid_pos", None)
+    if value is None:
+        raise CLIError("an AppID is required")
+    return int(value)
+
+
+def command_library(args: argparse.Namespace, command: str) -> int:
+    steam_root = expand(args.steam_root)
+    state_root = expand(args.state_dir)
+    appinfo = load_appinfo(steam_root)
+    installed = installed_games(steam_root)
+    games = [game_record(game, appinfo, steam_root, state_root) for game in installed]
+    not_installed = not_installed_games(appinfo, installed)
+    runtimes = runtime_profiles(args, state_root)
+    return output(
+        command,
+        {
+            "steam_root": str(steam_root),
+            "state_root": str(state_root),
+            "games": games,
+            "count": len(games),
+            "not_installed": not_installed,
+            "not_installed_count": len(not_installed),
+            "runtimes": runtimes,
+            "selected_runtime": runtimes[0]["id"] if runtimes else None,
+        },
+    )
+
+
+def inspected_game(args: argparse.Namespace) -> tuple[int, dict] | None:
+    steam_root = expand(args.steam_root)
+    state_root = expand(args.state_dir)
+    appid = resolve_appid(args)
+    game = installed_game(steam_root, appid)
+    if game is None:
+        return None
+    appinfo = load_appinfo(steam_root)
+    record = game_record(game, appinfo, steam_root, state_root, diagnostics=True)
+    return appid, record
+
+
+def command_inspect(args: argparse.Namespace) -> int:
+    appid = resolve_appid(args)
+    inspected = inspected_game(args)
+    if inspected is None:
+        return failure("inspect", f"installed AppID {appid} was not found", "not_installed", appid)
+    return output("inspect", {"appid": appid, "game": inspected[1]})
+
+
+def command_diagnose(args: argparse.Namespace) -> int:
+    appid = resolve_appid(args)
+    inspected = inspected_game(args)
+    if inspected is None:
+        return failure("diagnose", f"installed AppID {appid} was not found", "not_installed", appid)
+    return output("diagnose", {"appid": appid, "game": inspected[1], "diagnostics": inspected[1].get("diagnostics", {})})
+
+
+def plan_record(args: argparse.Namespace) -> dict:
+    steam_root = expand(args.steam_root)
+    state_root = expand(args.state_dir)
+    appid = resolve_appid(args)
+    game = installed_game(steam_root, appid)
+    if game is None:
+        raise CLIError(f"installed AppID {appid} was not found")
+    appinfo = load_appinfo(steam_root)
+    record = game_record(game, appinfo, steam_root, state_root)
+    runtime = selected_runtime_profile(args, state_root)
+    launches = []
+    for option in record["launch_options"]:
+        launches.append(
+            {
+                "entry": option["entry"],
+                "action": "map" if option["available"] else "disable",
+                "executable": option["executable"],
+                "arguments": option["arguments"],
+                "working_directory": option["working_directory"],
+                "arch": option["arch"],
+                "reason": option["reason"],
+            }
+        )
+    usable = [option for option in record["launch_options"] if option["available"]]
+    cloud = record["cloud"]
+    cloud_action = "map" if getattr(args, "cloud_native", False) and cloud["supported_roots"] else "leave"
+    issues = []
+    if not usable:
+        issues.append({"code": "no_usable_launch", "message": "No usable Windows PE launch entry was found."})
+    if runtime is None:
+        issues.append({"code": "runtime_missing", "message": "No Wine/GPTK runtime was discovered."})
+    elif runtime["status"] != "ready":
+        issues.extend(
+            {
+                "code": "runtime_incomplete",
+                "message": check["remediation"] or f"Runtime check is missing: {check['label']}",
+            }
+            for check in runtime["checks"]
+            if check["required"] and check["status"] != "ready"
+        )
+    return {
+        "operation": "install",
+        "appid": appid,
+        "name": record["name"],
+        "install_dir": record["install_dir"],
+        "requires_steam_stopped": True,
+        "steam_process": steam_status(steam_root)["process"],
+        "launches": launches,
+        "cloud": {
+            "action": cloud_action,
+            "roots": cloud["supported_roots"],
+            "status": cloud["status"],
+        },
+        "runtime": runtime,
+        "ready": not issues,
+        "issues": issues,
+    }
+
+
+def command_plan(args: argparse.Namespace) -> int:
+    try:
+        plan = plan_record(args)
+    except CLIError as exc:
+        return failure("plan", str(exc), "not_installed" if "not found" in str(exc) else None, resolve_appid(args))
+    return output("plan", {"plan": plan, "appid": plan["appid"]})
+
+
+def apply_runtime_defaults(args: argparse.Namespace) -> dict:
+    """Resolve a runtime once, then fill installer-only paths from it."""
+
+    state_root = expand(args.state_dir)
+    profile = selected_runtime_profile(args, state_root)
+    if profile is None:
+        raise CLIError("no Wine/GPTK runtime was discovered")
+    values = {
+        "wine_root": profile.get("wine_root"),
+        "gptk_root": profile.get("gptk_root"),
+        "bridge_root": profile.get("bridge_root"),
+        "prefix": profile.get("prefix"),
+        "wine_prefix_base": profile.get("prefix_base"),
+        "wine_arch": profile.get("wine_arch"),
+        "sandboxfs_manifest": profile.get("sandboxfs_manifest"),
+        "sandboxfs_lib": profile.get("sandboxfs_lib"),
+    }
+    for name, value in values.items():
+        if not getattr(args, name, None) and value:
+            setattr(args, name, value)
+    return profile
+
+
+def resolve_install(args: argparse.Namespace) -> tuple[dict, dict]:
+    appid = resolve_appid(args)
+    args.appid = appid
+    steam_root = expand(args.steam_root)
+    state_root = expand(args.state_dir)
+    game = installed_game(steam_root, appid)
+    if game is None:
+        raise CLIError(f"installed AppID {appid} was not found")
+    appinfo = load_appinfo(steam_root)
+    record = game_record(game, appinfo, steam_root, state_root)
+    usable = [option for option in record["launch_options"] if option["available"]]
+    if not usable:
+        raise CLIError(f"AppID {appid} has no usable Windows PE launch")
+    # Re-running install is the per-game runner change operation. Allow the
+    # lower-level transaction to replace files only when the current mapping
+    # is healthy and therefore known to be Ullage-owned.
+    if record["mapping_status"] == "healthy":
+        args.force = True
+    profile = apply_runtime_defaults(args)
+    if not getattr(args, "target", None):
+        args.target = usable[0]["path"]
+    if not getattr(args, "install_dir", None):
+        args.install_dir = record["install_dir"]
+    if not getattr(args, "prefix", None):
+        args.prefix = profile.get("prefix") or str(state_root / "compatdata" / str(appid) / "pfx")
+    return record, profile
+
+
+def install_arguments(args: argparse.Namespace) -> list[str]:
+    values = [
+        "--appid", str(args.appid),
+        "--target", args.target,
+        "--install-dir", args.install_dir,
+        "--steam-root", args.steam_root,
+        "--state-dir", args.state_dir,
+        "--prefix", args.prefix,
+        "--wine-root", args.wine_root,
+        "--gptk-root", args.gptk_root,
+        "--bridge-root", args.bridge_root,
+    ]
+    optional = [
+        ("--game-dir", args.game_dir),
+        ("--launch-entry", args.launch_entry),
+        ("--wine-dllpath", args.wine_dllpath),
+        ("--wine-dll-overrides", args.wine_dll_overrides),
+        ("--wine-prefix-base", args.wine_prefix_base),
+        ("--wine-arch", args.wine_arch),
+        ("--sandboxfs-manifest", args.sandboxfs_manifest),
+        ("--sandboxfs-lib", args.sandboxfs_lib),
+        ("--steamclient64-forwarder", args.steamclient64_forwarder),
+        ("--log", args.log),
+        ("--wine-debug", args.wine_debug),
+        ("--winemsync", args.winemsync),
+        ("--cloud-wine-user", args.cloud_wine_user),
+        ("--cloud-steam3-account-id", args.cloud_steam3_account_id),
+        ("--cloud-native-platform", args.cloud_native_platform),
+        ("--cloud-native-base", args.cloud_native_base),
+        ("--cloud-native-addpath-root", args.cloud_native_addpath_root),
+        ("--cloud-steam-account-name", args.cloud_steam_account_name),
+    ]
+    for option, value in optional:
+        if value:
+            values.extend([option, value])
+    if args.arch:
+        values.extend(["--arch", args.arch])
+    if args.legacy_steam:
+        values.append("--legacy-steam")
+    if args.cloud_native:
+        values.append("--cloud-native")
+    values.append("--preserve-steam-transport" if args.preserve_steam_transport else "--clean-steam-transport")
+    if args.force:
+        values.append("--force")
+    return values
+
+
+def command_install(args: argparse.Namespace) -> int:
+    try:
+        record, profile = resolve_install(args)
+    except CLIError as exc:
+        return failure("install", str(exc), appid=getattr(args, "appid", None))
+    if steam_running():
+        return failure(
+            "install",
+            "Native Steam must be fully quit before installing a mapping.",
+            "steam_running",
+            args.appid,
+        )
+    if not args.wine_root or not args.gptk_root or not args.bridge_root:
+        return failure("install", "The selected runtime is incomplete.", "runtime_incomplete", args.appid)
+    try:
+        install_environment = os.environ.copy()
+        install_environment["ULLAGE_RUNTIME_ID"] = profile["id"]
+        result = run(
+            [str(SCRIPT_DIR / "ullage-install"), *install_arguments(args)],
+            env=install_environment,
+        )
+    except CLIError as exc:
+        return failure("install", str(exc), appid=args.appid)
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout).strip() or f"ullage-install exited {result.returncode}"
+        return failure("install", message, appid=args.appid)
+    steam_root = expand(args.steam_root)
+    state_root = expand(args.state_dir)
+    appinfo = load_appinfo(steam_root)
+    game = installed_game(steam_root, args.appid)
+    payload = {
+        "appid": args.appid,
+        "message": "mapping installed",
+        "output": result.stdout.strip(),
+        "runtime": profile,
+    }
+    if game:
+        payload["game"] = game_record(game, appinfo, steam_root, state_root)
+    return output("install", payload)
+
+
+def command_repair(args: argparse.Namespace) -> int:
+    appid = resolve_appid(args)
+    if steam_running():
+        return failure(
+            "repair",
+            "Native Steam must be fully quit before repairing a mapping.",
+            "steam_running",
+            appid,
+        )
+    state_root = expand(args.state_dir)
+    steam_root = expand(args.steam_root)
+    paths = MAPPING._paths(state_root, appid)
+    try:
+        result = MAPPING.repair_mapping(
+            steam_root / "appcache/appinfo.vdf",
+            paths["state_file"],
+            paths["config_file"],
+            paths["launcher"],
+            state_root / "backups/appinfo",
+            force=args.force,
+            expected_appid=appid,
+        )
+    except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError) as exc:
+        return failure("repair", str(exc), appid=appid)
+    return output("repair", {"appid": appid, "message": "mapping repaired", "mapping": result})
+
+
+def command_remove(args: argparse.Namespace) -> int:
+    appid = resolve_appid(args)
+    if steam_running():
+        return failure(
+            "remove",
+            "Native Steam must be fully quit before removing a mapping.",
+            "steam_running",
+            appid,
+        )
+    try:
+        result = run(
+            [
+                str(SCRIPT_DIR / "ullage-remove"),
+                "--appid", str(appid),
+                "--steam-root", args.steam_root,
+                "--state-dir", args.state_dir,
+            ]
+        )
+    except CLIError as exc:
+        return failure("remove", str(exc), appid=appid)
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout).strip() or f"ullage-remove exited {result.returncode}"
+        return failure("remove", message, appid=appid)
+    backup = next(
+        (line.split("=", 1)[1] for line in result.stdout.splitlines() if line.startswith("appinfo_backup=")),
+        None,
+    )
+    return output(
+        "remove",
+        {
+            "appid": appid,
+            "message": "mapping removed",
+            "backup": backup,
+            "state_root": str(expand(args.state_dir)),
+        },
+    )
+
+
+def command_runtime(args: argparse.Namespace) -> int:
+    state_root = expand(args.state_dir)
+    profiles = runtime_profiles(args, state_root)
+    return output("runtime list", {"runtimes": profiles, "count": len(profiles)})
+
+
+def command_capabilities(args: argparse.Namespace) -> int:
+    return output("capabilities", {"capabilities": CAPABILITIES})
+
+
+def command_set_depot_mode(args: argparse.Namespace) -> int:
+    command = "steam set-depot-mode"
+    steam_root = expand(args.steam_root)
+    try:
+        config = set_windows_depot_mode(steam_root, args.mode)
+    except CLIError as exc:
+        code = "steam_running" if "fully quit" in str(exc) else None
+        return failure(command, str(exc), code)
+    return output(
+        command,
+        {
+            "mode": args.mode,
+            "config_file": str(config),
+            "steam": steam_status(steam_root),
+        },
+    )
+
+
+def add_context(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--steam-root", default=str(DEFAULT_STEAM_ROOT))
+    parser.add_argument("--state-dir", default=str(DEFAULT_STATE_ROOT))
+    parser.add_argument("--json", action="store_true", help="emit the versioned JSON interface (the default)")
+
+
+def add_runtime_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--runtime", help="runtime ID returned by runtime list")
+    parser.add_argument("--wine-root")
+    parser.add_argument("--gptk-root")
+    parser.add_argument("--bridge-root")
+
+
+def add_appid(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("appid_pos", nargs="?", type=int, help="Steam AppID")
+    parser.add_argument("--appid", dest="appid_option", type=int, help="Steam AppID")
+
+
+def add_install_options(parser: argparse.ArgumentParser) -> None:
+    add_context(parser)
+    add_appid(parser)
+    add_runtime_options(parser)
+    parser.add_argument("--target")
+    parser.add_argument("--install-dir")
+    parser.add_argument("--prefix")
+    parser.add_argument("--game-dir")
+    parser.add_argument("--launch-entry")
+    parser.add_argument("--arch", choices=("auto", "win32", "win64"), default="auto")
+    parser.add_argument("--wine-dllpath")
+    parser.add_argument("--wine-dll-overrides")
+    parser.add_argument("--wine-prefix-base")
+    parser.add_argument("--wine-arch", choices=("win32", "win64"))
+    parser.add_argument("--sandboxfs-manifest")
+    parser.add_argument("--sandboxfs-lib")
+    parser.add_argument("--steamclient64-forwarder")
+    parser.add_argument("--log")
+    parser.add_argument("--wine-debug")
+    parser.add_argument("--winemsync")
+    parser.add_argument("--legacy-steam", action="store_true")
+    parser.add_argument("--cloud-native", action="store_true")
+    parser.add_argument("--cloud-wine-user")
+    parser.add_argument("--cloud-steam3-account-id")
+    parser.add_argument("--cloud-native-platform")
+    parser.add_argument("--cloud-native-base")
+    parser.add_argument("--cloud-native-addpath-root")
+    parser.add_argument("--cloud-steam-account-name")
+    transport = parser.add_mutually_exclusive_group()
+    transport.add_argument("--preserve-steam-transport", dest="preserve_steam_transport", action="store_true")
+    transport.add_argument("--clean-steam-transport", dest="preserve_steam_transport", action="store_false")
+    parser.set_defaults(preserve_steam_transport=True, force=False)
+    parser.add_argument("--force", action="store_true")
+
+
+def add_plan_options(parser: argparse.ArgumentParser) -> None:
+    add_context(parser)
+    add_appid(parser)
+    add_runtime_options(parser)
+    parser.add_argument("--prefix")
+    parser.add_argument("--cloud-native", action="store_true")
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(prog="ullagectl", description=__doc__)
+    root.add_argument("--version", action="version", version=f"ullagectl api {API_VERSION}")
+    commands = root.add_subparsers(dest="command", required=True)
+    status = commands.add_parser("doctor", aliases=["system-status", "status"], help="report host/runtime readiness")
+    add_context(status)
+    add_runtime_options(status)
+    library = commands.add_parser("library", aliases=["discover"], help="discover installed Steam games")
+    add_context(library)
+    inspect = commands.add_parser("inspect", help="inspect one installed game and its diagnostics")
+    add_context(inspect)
+    add_appid(inspect)
+    diagnose = commands.add_parser("diagnose", help="report diagnostics for one installed game")
+    add_context(diagnose)
+    add_appid(diagnose)
+    plan = commands.add_parser("plan", help="show a read-only install plan")
+    add_plan_options(plan)
+    install = commands.add_parser("install", help="install a guarded Steam launch mapping")
+    add_install_options(install)
+    repair = commands.add_parser("repair", help="repair a stale Steam launch mapping")
+    add_context(repair)
+    add_appid(repair)
+    repair.add_argument("--force", action="store_true")
+    remove = commands.add_parser("remove", help="restore a Steam launch mapping")
+    add_context(remove)
+    add_appid(remove)
+    runtime = commands.add_parser("runtime", help="inspect discovered Wine runtimes")
+    runtime_commands = runtime.add_subparsers(dest="runtime_command", required=True)
+    runtime_list = runtime_commands.add_parser("list", help="list discovered runtimes")
+    add_context(runtime_list)
+    add_runtime_options(runtime_list)
+    runtime_alias = commands.add_parser("runtime-list", help="list discovered runtimes")
+    add_context(runtime_alias)
+    add_runtime_options(runtime_alias)
+    steam = commands.add_parser("steam", help="configure native Steam")
+    steam_commands = steam.add_subparsers(dest="steam_command", required=True)
+    depot_mode = steam_commands.add_parser(
+        "set-depot-mode",
+        help="set the global Windows or native Steam depot mode",
+    )
+    depot_mode.add_argument("mode", choices=("windows", "native"))
+    add_context(depot_mode)
+    capabilities = commands.add_parser("capabilities", help="list the machine interface capabilities")
+    capabilities.add_argument("--json", action="store_true")
+    return root
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    try:
+        if args.command in {"system-status", "status", "doctor"}:
+            return output(args.command, system_status(args))
+        if args.command in {"library", "discover"}:
+            return command_library(args, args.command)
+        if args.command == "inspect":
+            return command_inspect(args)
+        if args.command == "diagnose":
+            return command_diagnose(args)
+        if args.command == "plan":
+            return command_plan(args)
+        if args.command == "install":
+            return command_install(args)
+        if args.command == "repair":
+            return command_repair(args)
+        if args.command == "remove":
+            return command_remove(args)
+        if args.command == "runtime":
+            return command_runtime(args)
+        if args.command == "runtime-list":
+            return command_runtime(args)
+        if args.command == "steam" and args.steam_command == "set-depot-mode":
+            return command_set_depot_mode(args)
+        if args.command == "capabilities":
+            return command_capabilities(args)
+    except (CLIError, OSError, ValueError) as exc:
+        return failure(args.command, str(exc))
+    return failure(args.command, "unknown command", "invalid_command")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
