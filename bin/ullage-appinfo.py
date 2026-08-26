@@ -360,7 +360,7 @@ class AppInfo:
         self.rewrite_record(appid)
         return selected, current, True
 
-    def restore_state(self, state):
+    def restore_state(self, state, expected_appid=None):
         """Restore a legacy single-entry or multi-entry mapping state."""
         entries = state.get("entries")
         if entries is None:
@@ -369,8 +369,15 @@ class AppInfo:
             raise AppInfoError("mapping state has no launch entries")
         try:
             appid = int(state["appid"])
-            launch = self.records[appid].sections["appinfo"]["config"]["launch"]
         except (KeyError, TypeError, ValueError) as exc:
+            raise AppInfoError("mapping state has invalid AppID or launch section") from exc
+        if expected_appid is not None and appid != expected_appid:
+            raise AppInfoError(
+                f"mapping state AppID {appid} does not match requested AppID {expected_appid}"
+            )
+        try:
+            launch = self.records[appid].sections["appinfo"]["config"]["launch"]
+        except (KeyError, TypeError) as exc:
             raise AppInfoError("mapping state has invalid AppID or launch section") from exc
 
         results = []
@@ -442,6 +449,7 @@ def main():
     restore = subparsers.add_parser("restore")
     restore.add_argument("--state", required=True)
     restore.add_argument("--appinfo", required=True)
+    restore.add_argument("--appid", type=int)
 
     state_launchers = subparsers.add_parser("state-launchers")
     state_launchers.add_argument("--state", required=True)
@@ -516,7 +524,7 @@ def main():
             with open(args.state, encoding="utf-8") as stream:
                 state = json.load(stream)
             appinfo = AppInfo(args.appinfo)
-            results = appinfo.restore_state(state)
+            results = appinfo.restore_state(state, expected_appid=args.appid)
             if any(item[2] for item in results):
                 appinfo.write(args.appinfo)
             for entry, current, changed, original in results:

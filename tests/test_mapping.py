@@ -111,6 +111,41 @@ with tempfile.TemporaryDirectory() as directory:
 
 with tempfile.TemporaryDirectory() as directory:
     base = Path(directory)
+    appinfo, state, config, launcher, state_home = fixture(
+        base, "ullage.sh", MODULE.APPINFO.APPINFO_29
+    )
+    state.write_text(
+        json.dumps(
+            {
+                "appid": 43,
+                "entry": "0",
+                "original": "Game.exe",
+                "installed": "ullage.sh",
+            }
+        ),
+        encoding="utf-8",
+    )
+    mismatched = MODULE.inspect_mapping(
+        appinfo, state, config, launcher, expected_appid=42
+    )
+    assert mismatched["status"] == "invalid"
+    try:
+        MODULE.repair_mapping(
+            appinfo,
+            state,
+            config,
+            launcher,
+            state_home / "backups" / "appinfo",
+            check_steam=False,
+            expected_appid=42,
+        )
+    except MODULE.MappingError as exc:
+        assert "does not match requested AppID" in str(exc)
+    else:
+        raise AssertionError("mismatched mapping AppID was accepted")
+
+with tempfile.TemporaryDirectory() as directory:
+    base = Path(directory)
     appinfo = base / "appinfo.vdf"
     appinfo.write_bytes(
         APPINFO_TEST.make_appinfo(

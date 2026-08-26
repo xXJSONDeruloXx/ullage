@@ -153,7 +153,14 @@ for version in (MODULE.APPINFO.APPINFO_28, MODULE.APPINFO.APPINFO_29):
             "WinAppDataLocalLow", "Windows", "Ullage/42"
         )
 
-        MODULE.restore(appinfo_file, state_file)
+        try:
+            MODULE.restore(appinfo_file, state_file, expected_appid=43)
+        except MODULE.NativeCloudError as exc:
+            assert "does not match requested AppID" in str(exc)
+        else:
+            raise AssertionError("mismatched Cloud AppID was accepted")
+
+        MODULE.restore(appinfo_file, state_file, expected_appid=42)
         restored = MODULE.APPINFO.AppInfo(appinfo_file)
         overrides = restored.records[42].sections["appinfo"]["ufs"]["rootoverrides"]
         assert "1" not in overrides

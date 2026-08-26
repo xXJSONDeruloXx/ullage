@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **52**.
-* Remaining to the 30% target: **105**.
+* Unique AppIDs tested in this run: **53**.
+* Remaining to the 30% target: **104**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -27,6 +27,17 @@ Runtime for this pass is the GameHub Wine installation `10000073`, GPTK
 `gptk-3.0-3`, the external lsteamclient runtime, and the shared experimental
 prefix with the canonical x64 `steamclient64.dll` forwarder. These paths are
 host-local evidence only; they are not project dependencies.
+
+## Uncounted install barriers
+
+These titles were selected but could not reach a depot test because Steam
+stopped at a first-run EULA. They are not part of the tested-AppID count and
+will require a user action-time acceptance before they can be exercised.
+
+| AppID | Title | Barrier |
+| ---: | --- | --- |
+| 558680 | KYOTO TANOJI QUEST | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
+| 6910 | Deus Ex: Game of the Year Edition | Install flow presented a first-run EULA before downloading; acceptance was not performed. |
 
 ## Current run
 
@@ -77,6 +88,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 405640 | Pony Island | win32 | P | F | P | P | Freshly downloaded 367 MB Unity depot. Default launch failed at `InitializeEngineGraphics`; `-force-d3d9` and `-force-glcore` produced the same failure. Native Stop cleanly reaped each attempt. |
 | 375820 | Human Resource Machine | win32 | P | F | I | P | Freshly downloaded 165 MB 32-bit depot. `--cloud-native` mapped `WinAppDataRoaming` to `~/Library/Application Support/Ullage/375820`; Steam changed from `Cloud Out of Date` to the checked Cloud state after synchronization. The game exited with Wine status 3 before a surface appeared, so native Stop was not needed. |
 | 48000 | LIMBO | win32 | P | F | P | P | Freshly downloaded 99 MB 32-bit depot. The run produced a game-originated `Pixel shader error` dialog rather than a playable surface; native Stop returned cleanly and left no Wine helpers. |
+| 15700 | Oddworld: Abe's Oddysee | win32 | P | F | P | P | Freshly downloaded 385 MB 32-bit DirectDraw depot. The single `AbeWin.exe` entry launched and native Stop returned cleanly, but the game surface stayed black after baseline, `renderer=gl`, `gl + backbuffer`, `gdi + backbuffer`, and `gl + backbuffer + readdraw` trials. No compatible bundled DirectDraw replacement was present in the installed GameHub runtime; keep this as a runtime-specific boundary rather than adding a renderer fork to Ullage. |
 | 204360 | Castle Crashers | win32 | P | P | P | P | Freshly downloaded 119 MB depot. The game reached a controller prompt and a live red game surface behind Steam; native Stop confirmed clean shutdown with no Wine/game helpers. Appinfo exposed no supported Windows Cloud root, so no native Cloud mapping was applied. |
 | 1986840 | POPGOES Arcade | win32 | P | P | P | P | Freshly downloaded 204 MB Clickteam/Fusion depot. The baseline 32-bit D3D11 path fell back to Wine Vulkan and exited with `VK_ERROR_FEATURE_NOT_PRESENT`; the stop-and-fix rerun with the per-AppID DXMT 0.80 i386 runtime rendered the story surface, retained the native overlay, and stopped cleanly. |
 | 1794680 | Vampire Survivors | win64 | P | P | P | P | Freshly downloaded 1.1 GB Unity depot. Native page showed the checked Cloud state; `--cloud-native` mapped `gameinstall` and `WinAppDataRoaming`, and Wine created `steam_autocloud.vdf` markers in the mapped prefix. The photosensitivity warning rendered, two Play cycles reached Stop, and both native Stops reaped the Wine session cleanly; no actual save was created. |
@@ -119,6 +131,7 @@ transcribed here.
 | 405640 | `~/.ullage/logs/405640.log`; three runs (default, `-force-d3d9`, `-force-glcore`) each logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, `wine_exit=143 signal_received=1` | Each run reached App Running; desktop capture showed Unity `Failed to initialize player` / `InitializeEngineGraphics failed`; game uninstalled afterward |
 | 375820 | `~/.ullage/logs/375820.log`; two runs exited with `wine_exit=3 signal_received=0`; no residual Wine/game processes | Native page showed `Steam Cloud Out of Date` before launch and a checked Cloud icon after synchronization; `~/.ullage/config/games/375820.cloud.json` records the native `WinAppDataRoaming` link; no save files were created |
 | 48000 | `~/.ullage/logs/48000.log`; `native Steam requested stop`; `reaped_helper_pids=none`; `reaped_game_pids=none`; `wine_exit=143 signal_received=1` | Desktop capture showed the LIMBO run's pixel-shader error dialog; native page returned to Play; game uninstalled afterward |
+| 15700 | `~/.ullage/logs/15700-oddworld-abes-oddysee.log`; repeated runs logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | `23:52:33` App Running; `23:53:57` Terminating; `23:54:00` Fully Installed; desktop capture remained black after the four renderer-setting trials; Steam uninstall and Ullage removal completed cleanly |
 | 204360 | `~/.ullage/logs/204360.log`; `native Steam requested stop`; `reaped_helper_pids=none`; `reaped_game_pids=none`; `wine_exit=143 signal_received=1` | Steam page reached App Running, desktop capture showed the red game surface and controller prompt; native Stop at `18:18` returned to Play with no residual Wine/game processes; game uninstalled afterward |
 | 1986840 | `~/.ullage/logs/1986840.log` records the baseline `wine_exit=3 signal_received=0`; `~/.ullage/logs/1986840-popgoes-dxmt.log` records the fixed run's `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | `23:10:11` App Running; desktop capture showed the rendered POPGOES story surface with the native Steam page/overlay; `23:11:25` Terminating and `23:11:27` fully stopped; `23:12:43` Uninstalled; no residual Wine/game processes remained |
 | 1794680 | `~/.ullage/logs/1794680.log`; two runs each logged `native Steam requested stop`, `reaped_helper_pids=...`, `wine_exit=143 signal_received=1` | App Running at `18:34` and relaunch at `18:36`; desktop capture showed the rendered photosensitivity warning; native Cloud icon was checked and `~/.ullage/config/games/1794680.cloud.json` recorded both Windows roots; native Stop returned to Play with no residual helpers |

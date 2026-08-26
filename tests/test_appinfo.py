@@ -203,6 +203,13 @@ def main():
                 ("0", "Game.exe", False),
                 ("1", "Game-dx9.exe", False),
             ]
+            mismatched = dict(state, appid=43)
+            try:
+                already_restored.restore_state(mismatched, expected_appid=42)
+            except MODULE.AppInfoError as exc:
+                assert "does not match requested AppID" in str(exc)
+            else:
+                raise AssertionError("mismatched restore AppID was accepted")
 
     print("appinfo patch/restore: ok")
 

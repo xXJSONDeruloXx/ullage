@@ -73,9 +73,11 @@ rollback() {
 }
 trap rollback EXIT HUP INT TERM
 
-"$PYTHON3_BIN" "$APPINFO_TOOL" restore --appinfo "$APPINFO_TMP" --state "$STATE_FILE"
+"$PYTHON3_BIN" "$APPINFO_TOOL" restore --appid "$APP_ID" \
+    --appinfo "$APPINFO_TMP" --state "$STATE_FILE"
 if [ -f "$CLOUD_STATE_FILE" ]; then
     "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" restore \
+        --appid "$APP_ID" \
         --appinfo "$APPINFO_TMP" --state "$CLOUD_STATE_FILE"
 fi
 mv "$APPINFO_TMP" "$APPINFO"

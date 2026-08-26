@@ -29,7 +29,5 @@ check:
 
 clean:
 	@if test -e bin/ullage-fd-exec; then unlink bin/ullage-fd-exec; fi
-	@if test -d bin/__pycache__; then \
-		find bin/__pycache__ -type f -name '*.pyc' -delete; \
-		rmdir bin/__pycache__ 2>/dev/null || true; \
-	fi
+	@find bin/__pycache__ tests/__pycache__ -type f -name '*.pyc' -delete 2>/dev/null || true
+	@rmdir bin/__pycache__ tests/__pycache__ 2>/dev/null || true

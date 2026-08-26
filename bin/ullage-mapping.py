@@ -98,7 +98,7 @@ def _state_entries(state, state_file, default_launcher):
     return appid, entries
 
 
-def inspect_mapping(appinfo_file, state_file, config_file, launcher):
+def inspect_mapping(appinfo_file, state_file, config_file, launcher, expected_appid=None):
     """Return a JSON-friendly mapping health record."""
 
     appinfo_file = Path(appinfo_file).expanduser()
@@ -123,6 +123,12 @@ def inspect_mapping(appinfo_file, state_file, config_file, launcher):
         return result
 
     result.update(appid=appid)
+    if expected_appid is not None and appid != expected_appid:
+        result.update(
+            status="invalid",
+            reason=f"mapping state AppID {appid} does not match requested AppID {expected_appid}",
+        )
+        return result
     if len(state_entries) == 1:
         result.update(
             entry=state_entries[0]["entry"],
@@ -192,10 +198,13 @@ def repair_mapping(
     backup_dir,
     force=False,
     check_steam=True,
+    expected_appid=None,
 ):
     """Reapply a recorded mapping atomically after Steam rewrites appinfo."""
 
-    info = inspect_mapping(appinfo_file, state_file, config_file, launcher)
+    info = inspect_mapping(
+        appinfo_file, state_file, config_file, launcher, expected_appid=expected_appid
+    )
     if info["status"] == "healthy":
         return info
     if info["status"] != "stale" and not (force and info["status"] == "foreign"):
@@ -255,7 +264,9 @@ def repair_mapping(
         except FileNotFoundError:
             pass
 
-    repaired = inspect_mapping(appinfo_file, state_file, config_file, launcher)
+    repaired = inspect_mapping(
+        appinfo_file, state_file, config_file, launcher, expected_appid=expected_appid
+    )
     repaired["backup"] = str(backup)
     return repaired
 
@@ -301,7 +312,9 @@ def main(argv=None):
     appinfo, state, config, launcher, backup_dir = _paths_from_args(args)
     try:
         if args.operation == "status":
-            result = inspect_mapping(appinfo, state, config, launcher)
+            result = inspect_mapping(
+                appinfo, state, config, launcher, expected_appid=args.appid
+            )
         else:
             result = repair_mapping(
                 appinfo,
@@ -310,6 +323,7 @@ def main(argv=None):
                 launcher,
                 backup_dir,
                 force=args.force,
+                expected_appid=args.appid,
             )
     except (MappingError, OSError, ValueError, APPINFO.AppInfoError) as exc:
         print(f"ullage-mapping: {exc}", file=sys.stderr)

@@ -538,11 +538,15 @@ def install(
         raise
 
 
-def restore(appinfo_filename, state_filename):
+def restore(appinfo_filename, state_filename, expected_appid=None):
     """Restore only mappings still equal to the recorded generated values."""
     with Path(state_filename).expanduser().open(encoding="utf-8") as stream:
         state = json.load(stream)
     appid = int(state["appid"])
+    if expected_appid is not None and appid != expected_appid:
+        raise NativeCloudError(
+            f"Cloud state AppID {appid} does not match requested AppID {expected_appid}"
+        )
     appinfo_filename = Path(appinfo_filename).expanduser()
     appinfo = APPINFO.AppInfo(appinfo_filename)
     record = _cloud_record(appinfo, appid)
@@ -602,6 +606,7 @@ def main():
     restore_parser = subparsers.add_parser("restore")
     restore_parser.add_argument("--appinfo", required=True)
     restore_parser.add_argument("--state", required=True)
+    restore_parser.add_argument("--appid", type=int)
 
     args = parser.parse_args()
     try:
@@ -625,7 +630,7 @@ def main():
             print("roots=" + ",".join(entry["root"] for entry in state["entries"]))
             print(f"seeded_files={len(state.get('seeded_files', []))}")
         else:
-            state = restore(args.appinfo, args.state)
+            state = restore(args.appinfo, args.state, expected_appid=args.appid)
             print(f"restored AppID {state['appid']}")
     except (APPINFO.AppInfoError, NativeCloudError, OSError, ValueError, KeyError) as exc:
         print(f"ullage-cloud-native: {exc}", file=sys.stderr)

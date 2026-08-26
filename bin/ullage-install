@@ -303,6 +303,7 @@ rollback() {
         cloud_appinfo="$APPINFO_TMP"
         [ "$APPINFO_INSTALLED" -eq 1 ] && cloud_appinfo="$APPINFO"
         "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" restore \
+            --appid "$APP_ID" \
             --appinfo "$cloud_appinfo" --state "$CLOUD_STATE_TMP" >/dev/null 2>&1 || true
     fi
     remove_file "$CONFIG_TMP"
@@ -353,11 +354,13 @@ chmod 600 "$APPINFO_BACKUP"
 cp -p "$APPINFO" "$APPINFO_TMP"
 
 if [ -f "$STATE_FILE" ]; then
-    "$PYTHON3_BIN" "$APPINFO_TOOL" restore --appinfo "$APPINFO_TMP" --state "$STATE_FILE" ||
+    "$PYTHON3_BIN" "$APPINFO_TOOL" restore --appid "$APP_ID" \
+        --appinfo "$APPINFO_TMP" --state "$STATE_FILE" ||
         die "existing launch mapping cannot be restored; remove it or use a matching appcache"
 fi
 if [ "$CLOUD_NATIVE" -eq 1 ] && [ -f "$CLOUD_STATE_FILE" ]; then
     "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" restore \
+        --appid "$APP_ID" \
         --appinfo "$APPINFO_TMP" --state "$CLOUD_STATE_FILE" ||
         die "existing native Cloud mapping cannot be restored; remove it or use a matching appcache"
 fi
