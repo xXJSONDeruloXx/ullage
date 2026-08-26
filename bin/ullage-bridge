@@ -385,6 +385,7 @@ WINE_CHILD_PID=
 WINE_SERVER_WAIT_PID=
 STEAM_STOP_WATCH_PID=
 SIGNAL_RECEIVED=0
+WINE_GAME_ROOT=$(printf 'Z:%s' "$GAME_DIR" | /usr/bin/sed 's|/|\\|g')
 
 stop_steam_stop_watch() {
     if [ -n "${STEAM_STOP_WATCH_PID:-}" ]; then
@@ -397,16 +398,15 @@ stop_steam_stop_watch() {
 start_steam_stop_watch() {
     [ "$STEAM_STOP_WATCH" = 1 ] || return 0
 
-    watch_child_pid=$1
-    watch_log=$2
-    watch_bridge_pid=$3
+    watch_log=$1
+    watch_bridge_pid=$2
     watch_offset=0
     if [ -f "$watch_log" ]; then
         watch_offset=$(wc -c <"$watch_log" | tr -d '[:space:]')
     fi
 
     (
-        while kill -0 "$watch_child_pid" 2>/dev/null; do
+        while kill -0 "$watch_bridge_pid" 2>/dev/null; do
             if [ -f "$watch_log" ]; then
                 watch_size=$(wc -c <"$watch_log" | tr -d '[:space:]')
                 case "$watch_size" in
@@ -459,7 +459,6 @@ wait_and_reap() {
         kill -0 "$WINE_CHILD_PID" 2>/dev/null || break
     done
     WINE_CHILD_PID=
-    stop_steam_stop_watch
 
     if [ "$WINE_SESSION_WAIT" = 1 ] && [ "$SIGNAL_RECEIVED" = 0 ]; then
         # Some Wine builds leave start.exe or helper processes alive after the
@@ -474,12 +473,35 @@ wait_and_reap() {
         fi
         wait "$WINE_SERVER_WAIT_PID" 2>/dev/null || true
         WINE_SERVER_WAIT_PID=
+
+        # A Windows launcher can exit after spawning another game process.
+        # wineserver -w is not reliable for every such launcher, so keep the
+        # bridge alive while a process from this depot is still present. This
+        # also keeps the Steam Terminating watcher alive long enough to stop
+        # the orphaned child through the scoped reaper.
+        while :; do
+            [ "$SIGNAL_RECEIVED" = 0 ] || break
+            game_pids=$(
+                /bin/ps -axo pid=,command= -ww 2>/dev/null |
+                    /usr/bin/awk -v root="$WINE_GAME_ROOT" \
+                        'index($0, root) {print $1}'
+            )
+            [ -z "$game_pids" ] || sleep 0.1
+            [ -n "$game_pids" ] || break
+        done
     fi
 
+    stop_steam_stop_watch
     trap - HUP INT TERM
 
-    "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" >>"$LOG_FILE" 2>&1 ||
-        printf '[ullage-bridge] reaper failed for prefix=%s\n' "$PREFIX" >>"$LOG_FILE"
+    if [ "$SIGNAL_RECEIVED" = 1 ]; then
+        "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" \
+            --game-root "$GAME_DIR" --kill-game-processes >>"$LOG_FILE" 2>&1 ||
+            printf '[ullage-bridge] reaper failed for prefix=%s\n' "$PREFIX" >>"$LOG_FILE"
+    else
+        "$REAPER" --prefix "$PREFIX" --wineserver "$WINESERVER" >>"$LOG_FILE" 2>&1 ||
+            printf '[ullage-bridge] reaper failed for prefix=%s\n' "$PREFIX" >>"$LOG_FILE"
+    fi
     printf '[ullage-bridge] wine_exit=%s signal_received=%s\n' \
         "$wine_exit" "$SIGNAL_RECEIVED" >>"$LOG_FILE"
     return "$wine_exit"
@@ -512,7 +534,7 @@ launch_clean() {
         "$WINE_BIN" "$GAME_EXE" "$@" >>"$LOG_FILE" 2>&1 &
     WINE_CHILD_PID=$!
     trap forward_signal HUP INT TERM
-    start_steam_stop_watch "$WINE_CHILD_PID" "$STEAM_ROOT/logs/content_log.txt" "$$"
+    start_steam_stop_watch "$STEAM_ROOT/logs/content_log.txt" "$$"
     wait_and_reap
 }
 
@@ -555,7 +577,7 @@ launch_with_steam_transport() {
         "$WINE_BIN" "$GAME_EXE" "$@" >>"$LOG_FILE" 2>&1 &
     WINE_CHILD_PID=$!
     trap forward_signal HUP INT TERM
-    start_steam_stop_watch "$WINE_CHILD_PID" "$STEAM_ROOT/logs/content_log.txt" "$$"
+    start_steam_stop_watch "$STEAM_ROOT/logs/content_log.txt" "$$"
     wait_and_reap
 }
 

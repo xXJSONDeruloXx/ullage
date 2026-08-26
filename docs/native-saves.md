@@ -84,8 +84,8 @@ These are validation gaps, not alternate Cloud implementations:
 - [ ] Native Cloud behavior when the prefix is moved, recreated, or contains more
   than one plausible Wine user.
 - [ ] Per-AppID Windows depot selection. The current host still relies on the
-  global `@sSteamCmdForcePlatformType windows` setting; this is independent of
-  save-path mapping.
+  global `@sSteamCmdForcePlatformType windows` setting; the negative native
+  Steam experiment is recorded in [`platform-selection.md`](platform-selection.md).
 - [ ] Any future Steam root whose name is not in the explicit table. It should be
   added with a documented destination, fixture, and one real acceptance run;
   silently mapping it would risk syncing the wrong files.

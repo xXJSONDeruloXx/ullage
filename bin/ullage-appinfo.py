@@ -267,6 +267,139 @@ class AppInfo:
         self.rewrite_record(appid)
         return selected, current
 
+    def windows_launches(self, appid):
+        """Return executable launch entries that belong to the Windows depot."""
+        try:
+            app = self.records[appid].sections["appinfo"]
+            common = app.get("common", {})
+            launch = app["config"]["launch"]
+        except (KeyError, TypeError) as exc:
+            raise AppInfoError(f"AppID {appid} has no config/launch section") from exc
+
+        common_os = common.get("oslist")
+        result = []
+        for key, item in launch.items():
+            if not isinstance(item, dict) or not isinstance(item.get("executable"), str):
+                continue
+            executable = item["executable"]
+            if not executable.lower().endswith(".exe"):
+                continue
+            entry_config = item.get("config", {})
+            entry_os = entry_config.get("oslist") if isinstance(entry_config, dict) else None
+            oslist = entry_os if entry_os is not None else common_os
+            if oslist is not None and "windows" not in {
+                value.strip().lower() for value in str(oslist).split(",")
+            }:
+                continue
+            workingdir = item.get("workingdir", "")
+            result.append(
+                {
+                    "entry": str(key),
+                    "executable": executable,
+                    "workingdir": workingdir if isinstance(workingdir, str) else "",
+                }
+            )
+        if not result:
+            raise AppInfoError(f"AppID {appid} has no Windows .exe launch entries")
+        return result
+
+    def replace_launches(self, appid, replacements, expects=None):
+        """Replace several launch entries in one record rewrite."""
+        try:
+            launch = self.records[appid].sections["appinfo"]["config"]["launch"]
+        except (KeyError, TypeError) as exc:
+            raise AppInfoError(f"AppID {appid} has no config/launch section") from exc
+
+        changed = []
+        for entry, executable in replacements:
+            selected = str(entry)
+            if selected not in launch:
+                raise AppInfoError(f"launch entry {selected} is not present")
+            current = launch[selected].get("executable")
+            if not isinstance(current, str):
+                raise AppInfoError(f"launch entry {selected} has no executable")
+            if expects is not None and current != expects.get(selected):
+                raise AppInfoError(
+                    f"launch entry {selected} changed unexpectedly: "
+                    f"{current!r} != {expects.get(selected)!r}"
+                )
+            launch[selected]["executable"] = executable
+            changed.append((selected, current, executable))
+        if not changed:
+            raise AppInfoError(f"AppID {appid} has no launch entries to replace")
+        self.rewrite_record(appid)
+        return changed
+
+    def restore_launch(self, appid, original, entry, installed):
+        """Restore a recorded launch entry, accepting an existing restore."""
+        try:
+            record = self.records[appid]
+            launch = record.sections["appinfo"]["config"]["launch"]
+            selected = str(entry)
+            current = launch[selected]["executable"]
+        except (KeyError, TypeError) as exc:
+            raise AppInfoError(
+                f"launch entry {entry} is not present or has no executable"
+            ) from exc
+
+        if current == original:
+            return selected, current, False
+        if current != installed:
+            raise AppInfoError(
+                f"launch entry {selected} changed unexpectedly: "
+                f"{current!r} != {installed!r}"
+            )
+        launch[selected]["executable"] = original
+        self.rewrite_record(appid)
+        return selected, current, True
+
+    def restore_state(self, state):
+        """Restore a legacy single-entry or multi-entry mapping state."""
+        entries = state.get("entries")
+        if entries is None:
+            entries = [state]
+        if not isinstance(entries, list) or not entries:
+            raise AppInfoError("mapping state has no launch entries")
+        try:
+            appid = int(state["appid"])
+            launch = self.records[appid].sections["appinfo"]["config"]["launch"]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AppInfoError("mapping state has invalid AppID or launch section") from exc
+
+        results = []
+        changes = []
+        for item in entries:
+            if not isinstance(item, dict):
+                raise AppInfoError("mapping state has an invalid launch entry")
+            try:
+                selected = str(item["entry"])
+                original = item["original"]
+                installed = item["installed"]
+                current = launch[selected]["executable"]
+            except (KeyError, TypeError) as exc:
+                raise AppInfoError(
+                    f"launch entry {item.get('entry', '?')} is not present or has no executable"
+                ) from exc
+            if not isinstance(original, str) or not isinstance(installed, str):
+                raise AppInfoError(f"mapping state has invalid executable for entry {selected}")
+            if current == original:
+                changed = False
+            elif current == installed:
+                changes.append((selected, original))
+                changed = True
+            else:
+                raise AppInfoError(
+                    f"launch entry {selected} changed unexpectedly: "
+                    f"{current!r} != {installed!r}"
+                )
+            results.append((selected, current, changed, original))
+
+        if changes:
+            for selected, original in changes:
+                launch[selected]["executable"] = original
+            self.rewrite_record(appid)
+        return results
+
     def write(self, filename):
         with open(filename, "wb") as stream:
             stream.write(self.data)
@@ -283,11 +416,26 @@ def main():
     patch.add_argument("--match")
     patch.add_argument("--entry")
     patch.add_argument("--expect")
+    patch.add_argument("--launcher")
     patch.add_argument("--state-out")
+
+    patch_all = subparsers.add_parser("patch-all")
+    patch_all.add_argument("--appinfo", required=True)
+    patch_all.add_argument("--appid", required=True, type=int)
+    patch_all.add_argument("--replace-template", required=True)
+    patch_all.add_argument("--launcher-template")
+    patch_all.add_argument("--state-out", required=True)
+
+    list_windows = subparsers.add_parser("list-windows")
+    list_windows.add_argument("--appinfo", required=True)
+    list_windows.add_argument("--appid", required=True, type=int)
 
     restore = subparsers.add_parser("restore")
     restore.add_argument("--state", required=True)
     restore.add_argument("--appinfo", required=True)
+
+    state_launchers = subparsers.add_parser("state-launchers")
+    state_launchers.add_argument("--state", required=True)
 
     args = parser.parse_args()
     try:
@@ -307,6 +455,8 @@ def main():
                 "original": original,
                 "installed": args.replace,
             }
+            if args.launcher:
+                state["launcher"] = args.launcher
             if args.state_out:
                 with open(args.state_out, "w", encoding="utf-8") as stream:
                     json.dump(state, stream, indent=2, sort_keys=True)
@@ -314,19 +464,56 @@ def main():
             print(f"entry={entry}")
             print(f"original={original}")
             print(f"installed={args.replace}")
+        elif args.operation == "patch-all":
+            appinfo = AppInfo(args.appinfo)
+            launches = appinfo.windows_launches(args.appid)
+            replacements = [
+                (item["entry"], args.replace_template.format(entry=item["entry"]))
+                for item in launches
+            ]
+            changed = appinfo.replace_launches(args.appid, replacements)
+            appinfo.write(args.appinfo)
+            entries = []
+            for item, (_, original, installed) in zip(launches, changed):
+                state_entry = {
+                    "entry": item["entry"],
+                    "original": original,
+                    "installed": installed,
+                }
+                if args.launcher_template:
+                    state_entry["launcher"] = args.launcher_template.format(
+                        entry=item["entry"]
+                    )
+                entries.append(state_entry)
+            with open(args.state_out, "w", encoding="utf-8") as stream:
+                json.dump({"appid": args.appid, "entries": entries}, stream, indent=2, sort_keys=True)
+                stream.write("\n")
+            print(f"entries={len(entries)}")
+        elif args.operation == "list-windows":
+            appinfo = AppInfo(args.appinfo)
+            for item in appinfo.windows_launches(args.appid):
+                executable = item["executable"].replace("\\", "/")
+                workingdir = item["workingdir"].replace("\\", "/")
+                print(f"{item['entry']}\t{executable}\t{workingdir}")
+        elif args.operation == "state-launchers":
+            with open(args.state, encoding="utf-8") as stream:
+                state = json.load(stream)
+            entries = state.get("entries") or [state]
+            for item in entries:
+                launcher = item.get("launcher")
+                if launcher:
+                    print(launcher)
         else:
             with open(args.state, encoding="utf-8") as stream:
                 state = json.load(stream)
             appinfo = AppInfo(args.appinfo)
-            entry, current = appinfo.replace_launch(
-                int(state["appid"]),
-                state["original"],
-                entry=str(state["entry"]),
-                expect=state["installed"],
-            )
-            appinfo.write(args.appinfo)
-            print(f"entry={entry}")
-            print(f"restored={state['original']}")
+            results = appinfo.restore_state(state)
+            if any(item[2] for item in results):
+                appinfo.write(args.appinfo)
+            for entry, current, changed, original in results:
+                print(f"entry={entry}")
+                label = "restored" if changed else "already_restored"
+                print(f"{label}={original}")
     except (AppInfoError, OSError, ValueError, KeyError) as exc:
         print(f"ullage-appinfo: {exc}", file=sys.stderr)
         return 2

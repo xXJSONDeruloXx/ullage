@@ -4,13 +4,16 @@ set -u
 
 PREFIX=
 WINESERVER=
+GAME_ROOT=
+KILL_GAME_PROCESSES=0
 
 usage() {
     cat >&2 <<'EOF'
-Usage: ullage-reap --prefix PATH --wineserver PATH
+Usage: ullage-reap --prefix PATH --wineserver PATH [--game-root PATH --kill-game-processes]
 
 The reaper is deliberately prefix-scoped. It never uses a global process-name
-kill, so another Wine prefix or the native Steam client is left alone.
+kill, so another Wine prefix or the native Steam client is left alone. Game
+processes are only eligible when an explicit install root is supplied.
 EOF
 }
 
@@ -31,6 +34,15 @@ while [ "$#" -gt 0 ]; do
             WINESERVER=$2
             shift 2
             ;;
+        --game-root)
+            [ "$#" -ge 2 ] || die "--game-root requires a path"
+            GAME_ROOT=$2
+            shift 2
+            ;;
+        --kill-game-processes)
+            KILL_GAME_PROCESSES=1
+            shift
+            ;;
         --help|-h)
             usage
             exit 0
@@ -45,6 +57,19 @@ done
 [ -n "$WINESERVER" ] || die "missing --wineserver"
 [ -d "$PREFIX" ] || die "prefix does not exist: $PREFIX"
 [ -x "$WINESERVER" ] || die "wineserver is missing or not executable: $WINESERVER"
+[ "$KILL_GAME_PROCESSES" -eq 0 ] || [ -n "$GAME_ROOT" ] ||
+    die "--kill-game-processes requires --game-root"
+
+if [ -n "$GAME_ROOT" ]; then
+    case "$GAME_ROOT" in
+        /*) ;;
+        *) GAME_ROOT=$(CDPATH= cd "$GAME_ROOT" && pwd) ;;
+    esac
+    [ -d "$GAME_ROOT" ] || die "game root does not exist: $GAME_ROOT"
+    WINE_GAME_ROOT=$(printf 'Z:%s' "$GAME_ROOT" | /usr/bin/sed 's|/|\\|g')
+else
+    WINE_GAME_ROOT=
+fi
 
 LSOF=/usr/sbin/lsof
 PS=/bin/ps
@@ -98,6 +123,22 @@ $($PS -axo pid=,command= -ww 2>/dev/null)
 EOF
 }
 
+list_game_processes() {
+    [ "$KILL_GAME_PROCESSES" -eq 1 ] || return 0
+    "$PS" -axo pid=,command= -ww 2>/dev/null |
+        /usr/bin/awk -v root="$WINE_GAME_ROOT" 'index($0, root) {print $1}'
+}
+
+is_live_game_process() {
+    process_id=$1
+    process_command=$($PS -p "$process_id" -o command= -ww 2>/dev/null | /usr/bin/sed 's/^ *//')
+    case "$process_command" in
+        *"$WINE_GAME_ROOT"*) ;;
+        *) return 1 ;;
+    esac
+    owns_prefix "$process_id"
+}
+
 stop_wineserver() {
     # Some Wine builds block when no server is live. Run the control command
     # separately with a short bound so cleanup can never hold Steam's Play
@@ -117,6 +158,13 @@ stop_wineserver() {
 }
 
 helper_pids=$(list_helpers)
+game_pids=
+if [ "$KILL_GAME_PROCESSES" -eq 1 ]; then
+    for process_id in $(list_game_processes); do
+        is_live_game_process "$process_id" || continue
+        game_pids="$game_pids $process_id"
+    done
+fi
 stop_wineserver
 
 if [ -n "$helper_pids" ]; then
@@ -132,4 +180,19 @@ if [ -n "$helper_pids" ]; then
     printf 'reaped_helper_pids=%s\n' "$(printf '%s' "$helper_pids" | tr '\n' ' ')"
 else
     printf '%s\n' 'reaped_helper_pids=none'
+fi
+
+if [ -n "$game_pids" ]; then
+    for process_id in $game_pids; do
+        is_live_game_process "$process_id" || continue
+        kill -TERM "$process_id" 2>/dev/null || true
+    done
+    "$SLEEP" 0.5
+    for process_id in $game_pids; do
+        is_live_game_process "$process_id" || continue
+        kill -KILL "$process_id" 2>/dev/null || true
+    done
+    printf 'reaped_game_pids=%s\n' "$(printf '%s' "$game_pids" | sed 's/^ *//' | tr ' ' '\n' | tr '\n' ' ')"
+else
+    [ "$KILL_GAME_PROCESSES" -eq 0 ] || printf '%s\n' 'reaped_game_pids=none'
 fi

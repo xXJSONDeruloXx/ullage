@@ -36,7 +36,7 @@ the acceptance criterion.
 | 8400 | Geometry Wars: Retro Evolved | P | P historically; latest repeats F | I | not configured | P | 32-bit path and overlay were visible in an earlier run; repeatability is an open renderer issue. |
 | 3480 | Peggle Deluxe | P | P | I; overlay observed | not configured | P | Strongest 32-bit legacy control; native Stop cleanup passed. |
 | 584400 | Sonic Mania | P | P | I; native lsteamclient observed | P (`WinAppDataLocal` + `SteamCloudDocuments`) | P | Fresh mixed-root mapping caused Steam to create `steam_autocloud.vdf` under the Wine prefix's Windows `Documents/Steam Cloud` path. |
-| 848350 | Katamari Damacy REROLL | P | P (forwarder staged) | P (x64 probe + native Play) | P (2 files) | P | Canonical-name `steamclient64.dll` forwarder removed the shared x64 SteamAPI stall; native Stop cleanup still passes. |
+| 848350 | Katamari Damacy REROLL | P | P (forwarder staged) | P (x64 probe + native Play) | P (2 files) | P | Canonical-name `steamclient64.dll` forwarder removed the shared x64 SteamAPI stall; repeated Play/confirmed Stop/relaunch on 2026-08-25 returned cleanly to Play. |
 | 3784030 | RACCOON: Coin Pusher Roguelike | P | F (black surface) | I | P | P | Native Cloud changed-file upload round trip passed. |
 | 1740930 | JellyCar Worlds | P | F (Unity/server failure) | I | P (22 files) | P | Cloud mapping works; game process does not reach a usable surface. |
 | 304430 | INSIDE | P | F | I | no supported Windows root | P | Fresh Play-button run reached Wine; the post-fix secondary launch stayed alive 44s with a black full-screen surface and stopped cleanly via TERM. |
@@ -135,22 +135,16 @@ Steam's `loginusers.vdf` unless explicitly supplied.
 
 ## Depot and compatibility-tool boundary
 
-Valve documents OS and architecture as depot mounting rules: a depot marked
-for Windows is selected by a Windows client, while a separate Linux depot is
-selected by a Linux client. See [Steam depots](https://partner.steamgames.com/doc/store/application/depots).
-The Valve Proton manifest declares `from_oslist=windows` and
-`to_oslist=linux`; see the [Proton compatibility-tool template](https://github.com/ValveSoftware/Proton/blob/proton_11.0/compatibilitytool.vdf.template).
-
-Local appinfo inspection shows that `config/launch/*/config/oslist` filters
-launch entries (for example, Windows and macOS alternatives in INSIDE), while
-the AppID record separately describes depot `config/oslist` values. The
-current parser intentionally edits only the launch executable and leaves those
-depot records untouched; no per-AppID depot-platform override was found or
-demonstrated. The current host still uses the global
-`@sSteamCmdForcePlatformType windows` setting to obtain Windows content. Ullage
-must not silently replace that with an appinfo launch-entry edit until a clean
-install experiment proves that the content manifest, depot set, and
-verification state all remain Windows-only.
+The detailed per-AppID investigation is in
+[`platform-selection.md`](platform-selection.md). In brief, launch `oslist`
+and depot `oslist` are separate, and a clean Peggle install showed that a
+native `compat.vdf` platform override does not select the Windows depot. A
+follow-up no-op compatibility-tool probe showed that native macOS Steam logs
+global and per-AppID `CompatToolMapping` entries but does not dispatch the
+tool. The host therefore retains the global
+`@sSteamCmdForcePlatformType windows` setting and the offline appinfo launch
+mapping. See [`compatibility-tool-research.md`](compatibility-tool-research.md)
+for the exact negative result and reconsideration gate.
 
 ## Evidence paths
 

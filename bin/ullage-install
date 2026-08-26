@@ -26,7 +26,7 @@ Usage:
   ullage-install --appid ID --target PATH [options]
 
 Options:
-  --launch-entry KEY           explicit appinfo launch entry when names differ
+  --launch-entry KEY           redirect only this appinfo entry (default: all Windows .exe entries)
   --game-dir PATH             working directory (default: target directory)
   --install-dir PATH          Steam install root for the relative launch entry (default: game-dir)
   --state-dir PATH            generated state root (default: ~/.ullage)
@@ -238,7 +238,6 @@ CLOUD_STATE_FILE="$CONFIG_DIR/$APP_ID.cloud.json"
 LAUNCHER_DIR="$STATE_HOME/launchers"
 LAUNCHER="$LAUNCHER_DIR/$APP_ID.sh"
 TARGET_NAME=$(basename "$TARGET")
-LAUNCH_REL=$("$PYTHON3_BIN" "$PATH_TOOL" relative "$INSTALL_DIR" "$LAUNCHER")
 
 for existing_file in "$CONFIG_FILE" "$STATE_FILE" "$LAUNCHER"; do
     if [ -e "$existing_file" ] && [ "$FORCE" -ne 1 ]; then
@@ -256,19 +255,45 @@ APPINFO_BACKUP="$STATE_HOME/backups/appinfo/$APP_ID-$STAMP.vdf"
 APPINFO_TMP="$APPINFO.tmp.$$"
 CONFIG_TMP="$CONFIG_FILE.tmp.$$"
 LAUNCHER_TMP="$LAUNCHER.tmp.$$"
+LAUNCHER_TMP_DIR="$LAUNCHER_DIR/.${APP_ID}.launchers.tmp.$$"
+LAUNCHER_PLAN="$CONFIG_DIR/.${APP_ID}.launchers.plan.$$"
+LAUNCHER_COMMIT_PLAN=
+SPECS_TMP="$CONFIG_DIR/.${APP_ID}.windows-specs.$$"
 STATE_TMP="$STATE_FILE.tmp.$$"
 CLOUD_STATE_TMP="$CLOUD_STATE_FILE.tmp.$$"
 CONFIG_BACKUP=
-LAUNCHER_BACKUP=
 STATE_BACKUP=
 CLOUD_STATE_BACKUP=
 APPINFO_INSTALLED=0
 CLOUD_NATIVE_APPLIED=0
+CONFIG_INSTALLED=0
+STATE_INSTALLED=0
+CLOUD_STATE_INSTALLED=0
+LAUNCHERS_COMMITTED=0
+MULTI_LAUNCH=0
 
 remove_file() {
     if [ -e "$1" ] || [ -L "$1" ]; then
         unlink "$1"
     fi
+}
+
+make_launcher() {
+    launcher=$1
+    temporary=$2
+    game_exe=$3
+    game_dir=$4
+    arch=$5
+    {
+        printf '#!/bin/sh\n'
+        printf '# ullage external launcher v1\n'
+        printf 'set -eu\n'
+        printf 'exec %s --config %s --game-exe %s --game-dir %s --arch %s -- "$@"\n' \
+            "$(shell_quote "$BRIDGE")" "$(shell_quote "$CONFIG_FILE")" \
+            "$(shell_quote "$game_exe")" "$(shell_quote "$game_dir")" "$arch"
+    } >"$temporary"
+    chmod 755 "$temporary"
+    printf '%s\t%s\t\n' "$launcher" "$temporary" >>"$LAUNCHER_PLAN"
 }
 
 rollback() {
@@ -285,11 +310,38 @@ rollback() {
     remove_file "$STATE_TMP"
     remove_file "$CLOUD_STATE_TMP"
     remove_file "$APPINFO_TMP"
+    restore_launchers() {
+        plan=$1
+        [ -f "$plan" ] || return 0
+        while IFS="$(printf '\t')" read -r launcher temporary backup; do
+            [ -n "$launcher" ] || continue
+            remove_file "$temporary"
+            if [ "$LAUNCHERS_COMMITTED" -eq 1 ]; then
+                remove_file "$launcher"
+            fi
+            if [ -n "$backup" ] && [ ! -e "$launcher" ] && [ -e "$backup" ]; then
+                mv "$backup" "$launcher"
+            fi
+        done <"$plan"
+    }
+    if [ -n "$LAUNCHER_COMMIT_PLAN" ] && [ -f "$LAUNCHER_COMMIT_PLAN" ]; then
+        restore_launchers "$LAUNCHER_COMMIT_PLAN"
+    else
+        restore_launchers "$LAUNCHER_PLAN"
+    fi
+    remove_file "$SPECS_TMP"
+    if [ -n "$LAUNCHER_COMMIT_PLAN" ]; then remove_file "$LAUNCHER_COMMIT_PLAN"; fi
+    if [ -d "$LAUNCHER_TMP_DIR" ]; then
+        find "$LAUNCHER_TMP_DIR" -type f -delete
+        rmdir "$LAUNCHER_TMP_DIR" 2>/dev/null || true
+    fi
     if [ "$APPINFO_INSTALLED" -eq 1 ] && [ -f "$APPINFO_BACKUP" ]; then
         cp -p "$APPINFO_BACKUP" "$APPINFO"
     fi
+    if [ "$CONFIG_INSTALLED" -eq 1 ]; then remove_file "$CONFIG_FILE"; fi
+    if [ "$STATE_INSTALLED" -eq 1 ]; then remove_file "$STATE_FILE"; fi
+    if [ "$CLOUD_STATE_INSTALLED" -eq 1 ]; then remove_file "$CLOUD_STATE_FILE"; fi
     if [ -n "$CONFIG_BACKUP" ] && [ ! -e "$CONFIG_FILE" ]; then mv "$CONFIG_BACKUP" "$CONFIG_FILE"; fi
-    if [ -n "$LAUNCHER_BACKUP" ] && [ ! -e "$LAUNCHER" ]; then mv "$LAUNCHER_BACKUP" "$LAUNCHER"; fi
     if [ -n "$STATE_BACKUP" ] && [ ! -e "$STATE_FILE" ]; then mv "$STATE_BACKUP" "$STATE_FILE"; fi
     if [ -n "$CLOUD_STATE_BACKUP" ] && [ ! -e "$CLOUD_STATE_FILE" ]; then mv "$CLOUD_STATE_BACKUP" "$CLOUD_STATE_FILE"; fi
     exit "$code"
@@ -308,6 +360,57 @@ if [ "$CLOUD_NATIVE" -eq 1 ] && [ -f "$CLOUD_STATE_FILE" ]; then
     "$PYTHON3_BIN" "$CLOUD_NATIVE_TOOL" restore \
         --appinfo "$APPINFO_TMP" --state "$CLOUD_STATE_FILE" ||
         die "existing native Cloud mapping cannot be restored; remove it or use a matching appcache"
+fi
+
+: >"$LAUNCHER_PLAN"
+if [ -n "$LAUNCH_ENTRY" ]; then
+    LAUNCH_REL=$("$PYTHON3_BIN" "$PATH_TOOL" relative "$INSTALL_DIR" "$LAUNCHER")
+    make_launcher "$LAUNCHER" "$LAUNCHER_TMP" "$TARGET" "$GAME_DIR" "$ARCH"
+elif [ -n "$TARGET_NAME" ]; then
+    "$PYTHON3_BIN" "$APPINFO_TOOL" list-windows \
+        --appinfo "$APPINFO_TMP" --appid "$APP_ID" >"$SPECS_TMP"
+    ENTRY_COUNT=$(wc -l <"$SPECS_TMP" | tr -d '[:space:]')
+    [ "$ENTRY_COUNT" -gt 0 ] || die "no Windows launch entries found for AppID $APP_ID"
+    if [ "$ENTRY_COUNT" -eq 1 ]; then
+        LAUNCH_REL=$("$PYTHON3_BIN" "$PATH_TOOL" relative "$INSTALL_DIR" "$LAUNCHER")
+        make_launcher "$LAUNCHER" "$LAUNCHER_TMP" "$TARGET" "$GAME_DIR" "$ARCH"
+    else
+        MULTI_LAUNCH=1
+        mkdir -p "$LAUNCHER_TMP_DIR"
+        while IFS="$(printf '\t')" read -r entry executable workingdir; do
+            [ -n "$entry" ] || continue
+            case "$executable" in
+                /*) die "Windows launch entry $entry is absolute: $executable" ;;
+            esac
+            entry_target="$INSTALL_DIR/$executable"
+            [ -f "$entry_target" ] ||
+                die "Windows launch entry $entry is missing: $entry_target"
+            [ ! -L "$entry_target" ] ||
+                die "Windows launch entry $entry is a symlink: $entry_target"
+            entry_info=$(/usr/bin/file -b "$entry_target")
+            case "$entry_info" in
+                *'PE32+'*) entry_arch=win64 ;;
+                *'PE32 executable'*) entry_arch=win32 ;;
+                *) die "Windows launch entry $entry is not a PE executable: $entry_target" ;;
+            esac
+            if [ -n "$workingdir" ]; then
+                entry_game_dir="$INSTALL_DIR/$workingdir"
+            else
+                entry_game_dir=$(CDPATH= cd "$(dirname "$entry_target")" && pwd)
+            fi
+            [ -d "$entry_game_dir" ] ||
+                die "working directory for launch entry $entry does not exist: $entry_game_dir"
+            entry_launcher="$LAUNCHER_DIR/$APP_ID-entry-$entry.sh"
+            entry_temporary="$LAUNCHER_TMP_DIR/$APP_ID-entry-$entry.sh"
+            if [ -e "$entry_launcher" ] && [ "$FORCE" -ne 1 ]; then
+                die "generated file exists (use --force): $entry_launcher"
+            fi
+            make_launcher "$entry_launcher" "$entry_temporary" \
+                "$entry_target" "$entry_game_dir" "$entry_arch"
+        done <"$SPECS_TMP"
+        LAUNCH_REL_TEMPLATE=$("$PYTHON3_BIN" "$PATH_TOOL" relative \
+            "$INSTALL_DIR" "$LAUNCHER_DIR/$APP_ID-entry-{entry}.sh")
+    fi
 fi
 
 {
@@ -337,21 +440,20 @@ fi
     printf 'WINE_SESSION_WAIT=%s\n' "$(shell_quote "${WINE_SESSION_WAIT:-1}")"
 } >"$CONFIG_TMP"
 
-{
-    printf '#!/bin/sh\n'
-    printf '# ullage external launcher v1\n'
-    printf 'set -eu\n'
-    printf 'exec %s --config %s -- "$@"\n' \
-        "$(shell_quote "$BRIDGE")" "$(shell_quote "$CONFIG_FILE")"
-} >"$LAUNCHER_TMP"
-chmod 755 "$LAUNCHER_TMP"
-
-if [ -n "$LAUNCH_ENTRY" ]; then
+if [ "$MULTI_LAUNCH" -eq 1 ]; then
+    "$PYTHON3_BIN" "$APPINFO_TOOL" patch-all \
+        --appinfo "$APPINFO_TMP" \
+        --appid "$APP_ID" \
+        --replace-template "$LAUNCH_REL_TEMPLATE" \
+        --launcher-template "$LAUNCHER_DIR/$APP_ID-entry-{entry}.sh" \
+        --state-out "$STATE_TMP"
+elif [ -n "$LAUNCH_ENTRY" ]; then
     "$PYTHON3_BIN" "$APPINFO_TOOL" patch \
         --appinfo "$APPINFO_TMP" \
         --appid "$APP_ID" \
         --entry "$LAUNCH_ENTRY" \
         --replace "$LAUNCH_REL" \
+        --launcher "$LAUNCHER" \
         --state-out "$STATE_TMP"
 else
     "$PYTHON3_BIN" "$APPINFO_TOOL" patch \
@@ -359,6 +461,7 @@ else
         --appid "$APP_ID" \
         --match "$TARGET_NAME" \
         --replace "$LAUNCH_REL" \
+        --launcher "$LAUNCHER" \
         --state-out "$STATE_TMP"
 fi
 if [ "$CLOUD_NATIVE" -eq 1 ]; then
@@ -384,10 +487,6 @@ if [ -e "$CONFIG_FILE" ]; then
     CONFIG_BACKUP="$CONFIG_FILE.backup.$STAMP"
     mv "$CONFIG_FILE" "$CONFIG_BACKUP"
 fi
-if [ -e "$LAUNCHER" ]; then
-    LAUNCHER_BACKUP="$LAUNCHER.backup.$STAMP"
-    mv "$LAUNCHER" "$LAUNCHER_BACKUP"
-fi
 if [ -e "$STATE_FILE" ]; then
     STATE_BACKUP="$STATE_FILE.backup.$STAMP"
     mv "$STATE_FILE" "$STATE_BACKUP"
@@ -396,18 +495,47 @@ if [ "$CLOUD_NATIVE" -eq 1 ] && [ -e "$CLOUD_STATE_FILE" ]; then
     CLOUD_STATE_BACKUP="$CLOUD_STATE_FILE.backup.$STAMP"
     mv "$CLOUD_STATE_FILE" "$CLOUD_STATE_BACKUP"
 fi
+
+LAUNCHER_COMMIT_PLAN="$LAUNCHER_PLAN.commit.$$"
+while IFS="$(printf '\t')" read -r launcher temporary ignored; do
+    [ -n "$launcher" ] || continue
+    backup="$launcher.backup.$STAMP"
+    if [ -e "$launcher" ] || [ -L "$launcher" ]; then
+        printf '%s\t%s\t%s\n' "$launcher" "$temporary" "$backup" >>"$LAUNCHER_COMMIT_PLAN"
+        mv "$launcher" "$backup"
+    else
+        backup=
+        printf '%s\t%s\t\n' "$launcher" "$temporary" >>"$LAUNCHER_COMMIT_PLAN"
+    fi
+done <"$LAUNCHER_PLAN"
+mv "$LAUNCHER_COMMIT_PLAN" "$LAUNCHER_PLAN"
+
 mv "$CONFIG_TMP" "$CONFIG_FILE"
-mv "$LAUNCHER_TMP" "$LAUNCHER"
+CONFIG_INSTALLED=1
+LAUNCHERS_COMMITTED=1
+while IFS="$(printf '\t')" read -r launcher temporary ignored; do
+    [ -n "$launcher" ] || continue
+    mv "$temporary" "$launcher"
+done <"$LAUNCHER_PLAN"
+rmdir "$LAUNCHER_TMP_DIR" 2>/dev/null || true
 mv "$STATE_TMP" "$STATE_FILE"
+STATE_INSTALLED=1
 if [ "$CLOUD_NATIVE" -eq 1 ]; then
     mv "$CLOUD_STATE_TMP" "$CLOUD_STATE_FILE"
+    CLOUD_STATE_INSTALLED=1
 fi
+remove_file "$SPECS_TMP"
+remove_file "$LAUNCHER_PLAN"
 trap - EXIT HUP INT TERM
 
 printf 'installed AppID %s\n' "$APP_ID"
 printf 'target=%s\n' "$TARGET"
-printf 'launcher=%s\n' "$LAUNCHER"
-printf 'steam_executable=%s\n' "$LAUNCH_REL"
+if [ "$MULTI_LAUNCH" -eq 1 ]; then
+    printf 'launchers=%s\n' "$ENTRY_COUNT"
+else
+    printf 'launcher=%s\n' "$LAUNCHER"
+    printf 'steam_executable=%s\n' "$LAUNCH_REL"
+fi
 printf 'config=%s\n' "$CONFIG_FILE"
 printf 'state=%s\n' "$STATE_FILE"
 printf 'appinfo_backup=%s\n' "$APPINFO_BACKUP"

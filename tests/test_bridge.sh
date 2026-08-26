@@ -20,10 +20,19 @@ write_script "$TEMP_ROOT/fd-exec" \
 write_script "$TEMP_ROOT/reaper" \
     '#!/bin/sh' \
     'prefix=' \
+    'kill_game=0' \
     'while [ "$#" -gt 0 ]; do' \
-    '  if [ "$1" = "--prefix" ]; then prefix=$2; shift 2; else shift; fi' \
+    '  case "$1" in' \
+    '    --prefix) prefix=$2; shift 2 ;;' \
+    '    --kill-game-processes) kill_game=1; shift ;;' \
+    '    *) shift ;;' \
+    '  esac' \
     'done' \
-    'printf "%s\n" reaped >>"$prefix/reaper-events"'
+    'if [ "$kill_game" -eq 1 ] && [ -f "$prefix/orphan.pid" ]; then' \
+    '  kill -KILL "$(cat "$prefix/orphan.pid")" 2>/dev/null || true' \
+    '  printf "%s\n" orphan-reaped >>"$prefix/reaper-events"' \
+    'fi' \
+    'printf "%s:%s\n" reaped "$kill_game" >>"$prefix/reaper-events"'
 write_script "$TEMP_ROOT/file" \
     '#!/bin/sh' \
     'printf "%s\n" "PE32 executable (GUI) Intel 80386, for MS Windows"'
@@ -37,11 +46,17 @@ write_script "$TEMP_ROOT/wine" \
     'case "$mode" in' \
     '  slow-exit) /bin/sleep 1; exit 7 ;;' \
     '  term|term-hang) trap '\''printf "%s\n" term >>"$WINEPREFIX/wine-events"; /bin/sleep 0.2; exit 143'\'' TERM; while :; do /bin/sleep 1; done ;;' \
+    '  term-orphan) (trap "" TERM; while :; do /bin/sleep 1; done) & printf "%s\n" "$!" >"$WINEPREFIX/orphan.pid"; trap '\''printf "%s\n" term >>"$WINEPREFIX/wine-events"; exit 143'\'' TERM; while :; do /bin/sleep 1; done ;;' \
+    '  orphan-exit) /bin/sh -c '\''trap "" TERM; exec -a "$0" /bin/sleep 100'\'' "$1" & printf "%s\n" "$!" >"$WINEPREFIX/orphan.pid"; exit 0 ;;' \
     '  *) exit 0 ;;' \
     'esac'
 write_script "$TEMP_ROOT/wineserver" \
     '#!/bin/sh' \
     'printf "%s:%s\n" "${1:-}" "${WINEPREFIX:-unset}" >>"$WINEPREFIX/wineserver-events"' \
+    'if [ "${1:-}" = "-w" ] && [ "$(cat "$WINEPREFIX/wine-mode")" = "orphan-exit" ]; then' \
+    '  trap '\''exit 0'\'' TERM INT' \
+    '  while :; do /bin/sleep 1; done' \
+    'fi' \
     'if [ "${1:-}" = "-w" ] && [ "$(cat "$WINEPREFIX/wine-mode")" = "term-hang" ]; then' \
     '  trap '\''printf "%s\\n" wineserver-term >>"$WINEPREFIX/wineserver-events"; exit 0'\'' TERM INT' \
     '  while :; do /bin/sleep 1; done' \
@@ -171,6 +186,40 @@ set -e
 grep -F 'term' "$CASE_PREFIX/wine-events" >/dev/null
 grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
 
+make_case orphan term-orphan
+set +e
+FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" &
+bridge_pid=$!
+ticks=0
+while [ ! -f "$CASE_PREFIX/orphan.pid" ] && [ "$ticks" -lt 40 ]; do
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+[ -f "$CASE_PREFIX/orphan.pid" ] || {
+    printf '%s\n' 'fake Wine did not create orphan before cleanup test' >&2
+    kill -TERM "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+}
+orphan_pid=$(cat "$CASE_PREFIX/orphan.pid")
+kill -TERM "$bridge_pid"
+wait "$bridge_pid"
+status=$?
+set -e
+[ "$status" -eq 143 ] || {
+    printf 'expected orphan case exit 143, got %s\n' "$status" >&2
+    exit 1
+}
+sleep 0.2
+if kill -0 "$orphan_pid" 2>/dev/null; then
+    printf '%s\n' 'prefix-scoped game reaper left an orphan alive' >&2
+    kill -KILL "$orphan_pid" 2>/dev/null || true
+    exit 1
+fi
+grep -F 'orphan-reaped' "$CASE_PREFIX/reaper-events" >/dev/null
+grep -F 'reaped:1' "$CASE_PREFIX/reaper-events" >/dev/null
+grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
+
 make_case steam-stop term
 set +e
 FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" &
@@ -186,7 +235,18 @@ done
     wait "$bridge_pid" 2>/dev/null || true
     exit 1
 }
-echo '[2026-08-25 00:00:00] AppID 42 state changed : Fully Installed,App Running,Terminating,' >>"$CASE_STEAM_LOG"
+echo '[2026-08-25 00:00:00] AppID 142 state changed : Fully Installed,App Running,Terminating,' >>"$CASE_STEAM_LOG"
+sleep 0.2
+bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+case "$bridge_state" in
+Z*|'')
+    echo 'bridge matched a different AppID termination event' >&2
+    kill -KILL "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+    ;;
+esac
+echo '[2026-08-25 00:00:01] AppID 42 state changed : Fully Installed,App Running,Terminating,' >>"$CASE_STEAM_LOG"
 ticks=0
 while [ "$ticks" -lt 100 ]; do
     bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
@@ -215,6 +275,66 @@ set -e
 grep -F 'term' "$CASE_PREFIX/wine-events" >/dev/null
 grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
 grep -F 'native Steam requested stop for appid=42' "$CASE_LOG" >/dev/null
+
+make_case steam-stop-after-launch orphan-exit
+set +e
+FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" &
+bridge_pid=$!
+ticks=0
+while [ ! -f "$CASE_PREFIX/orphan.pid" ] && [ "$ticks" -lt 40 ]; do
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+[ -f "$CASE_PREFIX/orphan.pid" ] || {
+    echo 'fake Wine did not create post-launch orphan before Steam stop test' >&2
+    kill -TERM "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+}
+ticks=0
+while ! grep -F -- '-w:' "$CASE_PREFIX/wineserver-events" >/dev/null 2>&1 &&
+    [ "$ticks" -lt 40 ]; do
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+sleep 0.2
+echo '[2026-08-25 00:00:00] AppID 42 state changed : Fully Installed,App Running,Terminating,' >>"$CASE_STEAM_LOG"
+ticks=0
+while [ "$ticks" -lt 100 ]; do
+    bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+    case "$bridge_state" in ''|Z*) break ;; esac
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+case "$bridge_state" in
+Z*|'') ;;
+*)
+    echo 'bridge did not watch Steam while draining a post-launch orphan' >&2
+    cat "$CASE_LOG" >&2 || true
+    kill -KILL "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+    ;;
+esac
+wait "$bridge_pid"
+status=$?
+set -e
+[ "$status" -eq 0 ] || {
+    echo "expected post-launch Steam stop to preserve clean launcher exit, got $status" >&2
+    exit 1
+}
+orphan_pid=$(cat "$CASE_PREFIX/orphan.pid")
+sleep 0.2
+if kill -0 "$orphan_pid" 2>/dev/null; then
+    echo 'post-launch Steam stop left an orphan alive' >&2
+    kill -KILL "$orphan_pid" 2>/dev/null || true
+    exit 1
+fi
+grep -F 'orphan-reaped' "$CASE_PREFIX/reaper-events" >/dev/null
+grep -F 'reaped:1' "$CASE_PREFIX/reaper-events" >/dev/null
+grep -F 'native Steam requested stop for appid=42' "$CASE_LOG" >/dev/null
+grep -F 'wine_exit=0 signal_received=1' "$CASE_LOG" >/dev/null
 
 make_case x64-forwarder slow-exit win64
 printf '%s\n' forwarder >"$CASE_BRIDGE_ROOT/x86_64-windows/steamclient64.dll"

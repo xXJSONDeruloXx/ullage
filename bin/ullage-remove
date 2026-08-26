@@ -80,7 +80,22 @@ if [ -f "$CLOUD_STATE_FILE" ]; then
 fi
 mv "$APPINFO_TMP" "$APPINFO"
 
-if [ -e "$LAUNCHER" ]; then mv "$LAUNCHER" "$LAUNCHER.bridge-backup.$STAMP"; fi
+LAUNCHER_LIST="$CONFIG_DIR/$APP_ID.launchers.$$"
+"$PYTHON3_BIN" "$APPINFO_TOOL" state-launchers --state "$STATE_FILE" >"$LAUNCHER_LIST"
+if [ ! -s "$LAUNCHER_LIST" ]; then
+    printf '%s\n' "$LAUNCHER" >"$LAUNCHER_LIST"
+fi
+while IFS= read -r launcher; do
+    [ -n "$launcher" ] || continue
+    case "$launcher" in
+        "$STATE_HOME"/launchers/*) ;;
+        *) die "launch state points outside the Ullage launcher directory: $launcher" ;;
+    esac
+    if [ -e "$launcher" ] || [ -L "$launcher" ]; then
+        mv "$launcher" "$launcher.bridge-backup.$STAMP"
+    fi
+done <"$LAUNCHER_LIST"
+unlink "$LAUNCHER_LIST"
 if [ -e "$CONFIG_FILE" ]; then mv "$CONFIG_FILE" "$CONFIG_FILE.bridge-backup.$STAMP"; fi
 mv "$STATE_FILE" "$STATE_FILE.bridge-backup.$STAMP"
 if [ -e "$CLOUD_STATE_FILE" ]; then mv "$CLOUD_STATE_FILE" "$CLOUD_STATE_FILE.bridge-backup.$STAMP"; fi

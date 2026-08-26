@@ -25,10 +25,12 @@ Wine/GPTK + D3DMetal
 Windows PE game -> native Steam client/session/overlay
 ~~~
 
-The installer changes only one local launch executable in Steam's binary
-`appinfo.vdf`. The target PE is not renamed, wrapped, or overwritten, so Steam
-can continue to verify the untouched depot. The launcher is generated outside
-the depot and can be regenerated from recorded state.
+The installer changes only the selected Windows `.exe` launch entries in
+Steam's binary `appinfo.vdf`. Each entry gets a small launcher outside the
+depot, so Steam's native launch-option chooser can still select a different
+executable, argument list, or working directory. The target PEs are not
+renamed, wrapped, or overwritten, so Steam can continue to verify the
+untouched depot. The launchers can be regenerated from recorded state.
 
 ## Ownership
 

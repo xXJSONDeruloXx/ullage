@@ -56,6 +56,48 @@ def _state_values(state, state_file):
     return appid
 
 
+def _state_entries(state, state_file, default_launcher):
+    """Normalize legacy and multi-launch state into one internal shape."""
+    try:
+        appid = _state_values(state, state_file)
+    except MappingError:
+        entries = state.get("entries") if isinstance(state, dict) else None
+        if not isinstance(entries, list) or not entries:
+            raise
+        try:
+            appid = int(state["appid"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise MappingError(f"mapping state has an invalid AppID: {state_file}") from exc
+
+    raw_entries = state.get("entries")
+    if raw_entries is None:
+        raw_entries = [state]
+    if not isinstance(raw_entries, list) or not raw_entries:
+        raise MappingError(f"mapping state has no launch entries: {state_file}")
+
+    entries = []
+    for item in raw_entries:
+        if not isinstance(item, dict):
+            raise MappingError(f"mapping state has an invalid launch entry: {state_file}")
+        required = ("entry", "original", "installed")
+        if any(key not in item for key in required):
+            raise MappingError(f"mapping state is incomplete: {state_file}")
+        if not isinstance(item["entry"], str):
+            raise MappingError(f"mapping state has invalid launch metadata: {state_file}")
+        if not isinstance(item["original"], str) or not isinstance(item["installed"], str):
+            raise MappingError(f"mapping state has invalid executable values: {state_file}")
+        launcher = item.get("launcher") or str(default_launcher)
+        entries.append(
+            {
+                "entry": item["entry"],
+                "original": item["original"],
+                "installed": item["installed"],
+                "launcher": launcher,
+            }
+        )
+    return appid, entries
+
+
 def inspect_mapping(appinfo_file, state_file, config_file, launcher):
     """Return a JSON-friendly mapping health record."""
 
@@ -75,50 +117,60 @@ def inspect_mapping(appinfo_file, state_file, config_file, launcher):
 
     try:
         state = json.loads(state_file.read_text(encoding="utf-8"))
-        appid = _state_values(state, state_file)
+        appid, state_entries = _state_entries(state, state_file, launcher)
     except (OSError, json.JSONDecodeError, MappingError) as exc:
         result.update(status="invalid", reason=str(exc))
         return result
 
-    result.update(
-        appid=appid,
-        entry=state["entry"],
-        expected=state["installed"],
-        original=state["original"],
-    )
+    result.update(appid=appid)
+    if len(state_entries) == 1:
+        result.update(
+            entry=state_entries[0]["entry"],
+            expected=state_entries[0]["installed"],
+            original=state_entries[0]["original"],
+        )
     if not appinfo_file.is_file():
         result.update(status="unavailable", reason="appinfo.vdf is missing")
         return result
 
     try:
         appinfo = APPINFO.AppInfo(appinfo_file)
-        entries = _launch_entries(appinfo, appid)
-        current = entries.get(str(state["entry"]), {}).get("executable")
+        launch_entries = _launch_entries(appinfo, appid)
+        inspected = []
+        for item in state_entries:
+            current = launch_entries.get(item["entry"], {}).get("executable")
+            inspected.append({**item, "actual": current})
     except (OSError, APPINFO.AppInfoError, MappingError, AttributeError) as exc:
         result.update(status="unavailable", reason=str(exc))
         return result
 
-    result["actual"] = current
-    if not isinstance(current, str):
-        result.update(status="stale", reason="recorded launch entry is missing")
-        return result
-    if current == state["installed"]:
-        missing = []
-        if not config_file.is_file():
-            missing.append("config")
-        if not launcher.is_file() or launcher.is_symlink():
-            missing.append("launcher")
-        if missing:
-            result.update(
-                status="broken",
-                reason="generated " + ", ".join(missing) + " is missing or invalid",
-            )
+    result["entries"] = inspected
+    if len(inspected) == 1:
+        result["actual"] = inspected[0]["actual"]
+    statuses = []
+    for item in inspected:
+        current = item["actual"]
+        if not isinstance(current, str):
+            statuses.append("stale")
+        elif current == item["installed"]:
+            if not config_file.is_file() or not Path(item["launcher"]).is_file() or Path(
+                item["launcher"]
+            ).is_symlink():
+                statuses.append("broken")
+            else:
+                statuses.append("healthy")
+        elif current == item["original"]:
+            statuses.append("stale")
         else:
-            result.update(status="healthy", reason="appinfo and generated state agree")
-    elif current == state["original"]:
-        result.update(status="stale", reason="Steam rewrote the launch entry")
+            statuses.append("foreign")
+    if "foreign" in statuses:
+        result.update(status="foreign", reason="a launch entry changed outside Ullage")
+    elif "stale" in statuses:
+        result.update(status="stale", reason="Steam rewrote a launch entry")
+    elif "broken" in statuses:
+        result.update(status="broken", reason="generated config or launcher is missing")
     else:
-        result.update(status="foreign", reason="launch entry changed outside Ullage")
+        result.update(status="healthy", reason="appinfo and generated state agree")
     return result
 
 
@@ -148,12 +200,12 @@ def repair_mapping(
         return info
     if info["status"] != "stale" and not (force and info["status"] == "foreign"):
         raise MappingError(f"cannot repair mapping: {info.get('reason', info['status'])}")
-    if (
-        not Path(config_file).is_file()
-        or not Path(launcher).is_file()
-        or Path(launcher).is_symlink()
-    ):
+    if not Path(config_file).is_file():
         raise MappingError("cannot repair mapping: generated config or launcher is missing")
+    for item in info.get("entries", []):
+        path = Path(item["launcher"])
+        if not path.is_file() or path.is_symlink():
+            raise MappingError("cannot repair mapping: generated config or launcher is missing")
     if check_steam:
         pids = _steam_pids()
         if pids:
@@ -178,12 +230,20 @@ def repair_mapping(
     try:
         shutil.copy2(appinfo_file, temporary)
         appinfo = APPINFO.AppInfo(temporary)
-        appinfo.replace_launch(
-            info["appid"],
-            info["expected"],
-            entry=info["entry"],
-            expect=info.get("actual"),
-        )
+        if len(info["entries"]) == 1:
+            item = info["entries"][0]
+            appinfo.replace_launch(
+                info["appid"],
+                item["installed"],
+                entry=item["entry"],
+                expect=item.get("actual"),
+            )
+        else:
+            appinfo.replace_launches(
+                info["appid"],
+                [(item["entry"], item["installed"]) for item in info["entries"]],
+                expects={item["entry"]: item.get("actual") for item in info["entries"]},
+            )
         appinfo.write(temporary)
         with open(temporary, "rb") as stream:
             os.fsync(stream.fileno())

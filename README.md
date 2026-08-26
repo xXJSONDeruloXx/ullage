@@ -59,6 +59,10 @@ make check
   source map, and design constraints.
 * [Native saves](docs/native-saves.md) — supported roots, live evidence, and
   remaining Cloud TODOs.
+* [Platform selection](docs/platform-selection.md) — the per-AppID depot
+  investigation and the current global-setting boundary.
+* [Compatibility-tool boundary](docs/compatibility-tool-research.md) — the
+  native macOS dispatch experiment and reconsideration gate.
 * [Steamworks acceptance](docs/steamworks-acceptance.md) — real-game matrix,
   probes, and known compatibility boundaries.
 * [Runtime contract](runtime/README.md) — host-supplied Wine/GPTK and

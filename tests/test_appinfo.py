@@ -108,20 +108,20 @@ def exercise(version):
         assert original == "Game.exe"
         appinfo.write(filename)
 
-        patched = MODULE.AppInfo(filename)
-        entry, current = patched.replace_launch(
-            42, "Game.exe", entry="0", expect="../../ullage.sh"
-        )
-        assert entry == "0"
-        assert current == "../../ullage.sh"
-        patched.write(filename)
-
         restored = MODULE.AppInfo(filename)
-        assert (
-            restored.records[42]
-            .sections["appinfo"]["config"]["launch"]["0"]["executable"]
-            == "Game.exe"
+        entry, current, changed = restored.restore_launch(
+            42, "Game.exe", "0", "../../ullage.sh"
         )
+        assert (entry, current, changed) == ("0", "../../ullage.sh", True)
+        restored.write(filename)
+
+        before = filename.read_bytes()
+        already_restored = MODULE.AppInfo(filename)
+        entry, current, changed = already_restored.restore_launch(
+            42, "Game.exe", "0", "../../ullage.sh"
+        )
+        assert (entry, current, changed) == ("0", "Game.exe", False)
+        assert filename.read_bytes() == before
 
 
 def main():
@@ -140,6 +140,64 @@ def main():
             )
             assert entry == "0"
             assert original == "windows\\JellyCar Worlds.exe"
+
+    for appinfo_version in (MODULE.APPINFO_28, MODULE.APPINFO_29):
+        sections = {
+            "appinfo": {
+                "common": {"oslist": "windows,macos"},
+                "config": {
+                    "launch": {
+                        "0": {"executable": "Game.exe"},
+                        "1": {
+                            "executable": "Game-dx9.exe",
+                            "config": {"oslist": "windows"},
+                        },
+                        "2": {
+                            "executable": "Game.app",
+                            "config": {"oslist": "macos"},
+                        },
+                    }
+                },
+            }
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / "appinfo.vdf"
+            filename.write_bytes(make_appinfo(appinfo_version, sections=sections))
+            appinfo = MODULE.AppInfo(filename)
+            launches = appinfo.windows_launches(42)
+            assert [item["entry"] for item in launches] == ["0", "1"]
+            changed = appinfo.replace_launches(
+                42, [("0", "shim-0.sh"), ("1", "shim-1.sh")]
+            )
+            assert changed == [
+                ("0", "Game.exe", "shim-0.sh"),
+                ("1", "Game-dx9.exe", "shim-1.sh"),
+            ]
+            appinfo.write(filename)
+            state = {
+                "appid": 42,
+                "entries": [
+                    {
+                        "entry": entry,
+                        "original": original,
+                        "installed": installed,
+                    }
+                    for entry, original, installed in changed
+                ],
+            }
+            restored = MODULE.AppInfo(filename)
+            results = restored.restore_state(state)
+            assert [item[:3] for item in results] == [
+                ("0", "shim-0.sh", True),
+                ("1", "shim-1.sh", True),
+            ]
+            restored.write(filename)
+            already_restored = MODULE.AppInfo(filename)
+            results = already_restored.restore_state(state)
+            assert [item[:3] for item in results] == [
+                ("0", "Game.exe", False),
+                ("1", "Game-dx9.exe", False),
+            ]
 
     print("appinfo patch/restore: ok")
 
