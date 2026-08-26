@@ -43,3 +43,32 @@ repository. Ullage does not fork or vendor that source tree.
 The native Steam client remains the source of steamclient.dylib, loader
 environment, IPC descriptors, user/session state, and overlay services. Ullage
 only passes those through the Wine launch boundary.
+
+## Renderer component overlays
+
+Keep renderer components outside the repository and select them with a
+per-AppID `--wine-root`. A runtime overlay must be an independent copy (an
+APFS copy-on-write clone is suitable); do not use a hard-link tree as a
+long-lived Wine root because Wine may write into it.
+
+The tested DXMT 0.80 built-in layout for a 32-bit D3D11 title is:
+
+```text
+WINE_ROOT/lib/wine/i386-windows/{d3d10core,d3d11,dxgi,winemetal}.dll
+WINE_ROOT/lib/wine/x86_64-unix/winemetal.so
+PREFIX/drive_c/windows/syswow64/winemetal.dll
+```
+
+The [DXMT source](https://github.com/3Shain/dxmt) and its
+[installation guide](https://github.com/3Shain/dxmt/wiki/DXMT-Installation-Guide-for-Geeks)
+describe the matching built-in layout and loader rules. Do not add
+`native,builtin` overrides for the built-in files unless the selected runtime
+requires them.
+
+This boundary is evidenced by Press Any Button (AppID 1448030): the normal
+GameHub runtime fell back to Wine Vulkan and exited with
+`VK_ERROR_FEATURE_NOT_PRESENT`; the same untouched depot rendered with the
+DXMT i386 components above, retained the native Steam overlay, and passed two
+native Steam Stop/relaunch cycles. This proves a reusable runtime selection
+point, not universal DXMT compatibility. Ullage does not vendor or download
+these components.

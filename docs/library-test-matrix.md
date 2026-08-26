@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **51**.
-* Remaining to the 30% target: **106**.
+* Unique AppIDs tested in this run: **52**.
+* Remaining to the 30% target: **105**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -65,6 +65,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 1256230 | Hyperbolica | win64 | P | P | P | P | Newly downloaded 247 MB / 902 MB installed depot with two Windows launch options and a `WinAppDataLocalLow` Cloud root. Both the default and Steam VR chooser options passed their preserved argument through distinct launchers and rendered the 3D scene; both native Stop cycles and cleanup were clean. |
 | 425410 | Road to Ballhalla | win64 | P | P | P | P | Newly downloaded 194 MB / 505 MB installed depot. Four Windows entries were advertised, but only the installed base and editor executables were made selectable; both chooser options rendered, preserved their distinct launch paths, and passed native Stop/reaping. `WinAppDataLocal` was mapped and restored during cleanup. |
 | 1507530 | Stellar Mess: The Princess Conundrum (Chapter 1) | win32 | P | P | P | P | Newly downloaded 3.3 MB / 22 MB installed depot. The 32-bit game reached its rendered language-selection screen through the mapped Play button; the title has no Auto-Cloud metadata. Native Stop returned to Play, and Steam uninstall plus Ullage removal left no game or Wine helpers. |
+| 1448030 | Press Any Button | win32 | P | P | P | P | Baseline GameHub Wine fell back to Wine Vulkan and exited with `VK_ERROR_FEATURE_NOT_PRESENT`; a per-AppID DXMT 0.80 i386 runtime overlay rendered the untouched game with the native overlay. Two Play/Stop cycles returned to Play and left no Wine/game helpers. |
 | 3520070 | Megabonk Demo | win64 | P | P | P | P | Freshly downloaded 51 MB / 157 MB installed demo; both DX11/default and DX12 chooser options rendered the menu through distinct per-entry launchers. The DX12 selection preserved one Steam argument; native Stop returned cleanly for both runs. |
 | 2921380 | Caribbean Crashers | win32 | P | F | P | P | Fresh run reached Steam Running but produced only NW.js crashpad/GPU/utility zombies and no visible game surface. After the supervisor fix, native Stop logged the Steam termination event, returned to Play, and left no Caribbean/Wine helpers. |
 | 2827560 | 100 Romantic Cats | win64 | P | P | P | P | Freshly downloaded 49 MB depot; full-screen Unity coloring scene rendered with Steam overlay visible; native Stop returned cleanly. |
@@ -138,6 +139,7 @@ transcribed here.
 | 1256230 | `~/.ullage/logs/1256230-hyperbolica.log`; two runs logged `args=0` and `args=1`, each with `native Steam requested stop`, eight reaped helper PIDs, and `wine_exit=143 signal_received=1` | `21:56:03` default App Running; `21:57:36` Terminating; `21:58:48` VR-option App Running; `22:00:30` Terminating; `22:02:15` Uninstalling and Uninstalled; desktop captures showed the rendered 3D scene for both options and native Cloud mapping was restored |
 | 425410 | `~/.ullage/logs/425410-ballhalla.log`; default and editor runs logged `args=0`, native Steam stop requests, and `wine_exit=143 signal_received=1`; the default run reaped eight helper PIDs and the editor left no residual processes | `22:10:42` default App Running; `22:13:32` Terminating and `22:13:35` fully stopped; `22:14:35` editor App Running; `22:17:44` Terminating and `22:17:47` fully stopped; `22:18:34` Uninstalling and Uninstalled; desktop captures showed the Road to Ballhalla splash and editor surface; filtered chooser contained only installed entries |
 | 1507530 | `~/.ullage/logs/1507530-stellar-mess.log`; `native Steam requested stop`; `reaped_helper_pids=none`; `reaped_game_pids=none`; `wine_exit=143 signal_received=1` | `22:25:02` App Running; `22:26:13` Terminating; `22:26:15` fully stopped; `22:27:06` Uninstalled; desktop capture showed the rendered language-selection surface; no Cloud mapping was needed |
+| 1448030 | `~/.ullage/logs/1448030-press-any-button.log`; baseline exited `wine_exit=3 signal_received=0`; two DXMT-overlay runs logged `native Steam requested stop`, `reaped_helper_pids=none`, `reaped_game_pids=none`, and `wine_exit=143 signal_received=1` | `22:55:24` and `22:57:36` Play requests; desktop captures showed the rendered blue game surface and Steam overlay; both native Stop cycles returned to Play with no residual processes |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every
