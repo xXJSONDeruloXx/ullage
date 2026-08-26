@@ -531,6 +531,7 @@ forward_signal() {
 
 wait_and_reap() {
     wine_exit=0
+    signal_kill_timer_pid=
     # Reap the exact Wine launcher before waiting for the prefix server. A
     # parallel `wineserver -w` can return before a slow game registers its
     # server; treating that as completion kills a game that is still starting
@@ -538,10 +539,41 @@ wait_and_reap() {
     while :; do
         wait "$WINE_CHILD_PID" && wine_exit=0 || wine_exit=$?
         # A signal can interrupt wait(2) before Wine has observed the forwarded
-        # TERM. Keep waiting while the exact child is still alive. Once wait
-        # has reaped it, kill -0 is false and the recorded status is final.
+        # TERM. Give the exact launcher a short, independently bounded grace
+        # period, then force and reap it if necessary. The prefix-scoped
+        # reaper below handles that launcher and any reparented game child, so
+        # never let native Steam remain Terminating here.
+        if [ "$SIGNAL_RECEIVED" = 1 ]; then
+            if ! kill -0 "$WINE_CHILD_PID" 2>/dev/null; then
+                break
+            fi
+            if [ -z "$signal_kill_timer_pid" ]; then
+                (
+                    sleep 2
+                    kill -KILL "$WINE_CHILD_PID" 2>/dev/null || true
+                ) &
+                signal_kill_timer_pid=$!
+                continue
+            fi
+            if kill -0 "$signal_kill_timer_pid" 2>/dev/null; then
+                continue
+            fi
+            if kill -0 "$WINE_CHILD_PID" 2>/dev/null; then
+                kill -KILL "$WINE_CHILD_PID" 2>/dev/null || true
+            fi
+            if wait "$WINE_CHILD_PID"; then
+                wine_exit=0
+            else
+                wine_exit=$?
+            fi
+            break
+        fi
         kill -0 "$WINE_CHILD_PID" 2>/dev/null || break
     done
+    if [ -n "$signal_kill_timer_pid" ]; then
+        kill -TERM "$signal_kill_timer_pid" 2>/dev/null || true
+        wait "$signal_kill_timer_pid" 2>/dev/null || true
+    fi
     WINE_CHILD_PID=
 
     if [ "$WINE_SESSION_WAIT" = 1 ] && [ "$SIGNAL_RECEIVED" = 0 ]; then

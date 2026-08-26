@@ -57,14 +57,12 @@ done
 [ -n "$WINESERVER" ] || die "missing --wineserver"
 [ -d "$PREFIX" ] || die "prefix does not exist: $PREFIX"
 [ -x "$WINESERVER" ] || die "wineserver is missing or not executable: $WINESERVER"
+PREFIX=$(CDPATH= cd "$PREFIX" && pwd -P)
 [ "$KILL_GAME_PROCESSES" -eq 0 ] || [ -n "$GAME_ROOT" ] ||
     die "--kill-game-processes requires --game-root"
 
 if [ -n "$GAME_ROOT" ]; then
-    case "$GAME_ROOT" in
-        /*) ;;
-        *) GAME_ROOT=$(CDPATH= cd "$GAME_ROOT" && pwd) ;;
-    esac
+    GAME_ROOT=$(CDPATH= cd "$GAME_ROOT" && pwd -P)
     [ -d "$GAME_ROOT" ] || die "game root does not exist: $GAME_ROOT"
     WINE_GAME_ROOT=$(printf 'Z:%s' "$GAME_ROOT" | /usr/bin/sed 's|/|\\|g')
 else
@@ -91,18 +89,48 @@ is_helper_name() {
     esac
 }
 
-owns_prefix() {
+has_open_path() {
+    process_id=$1
+    path_root=$2
     [ -x "$LSOF" ] || return 1
-    "$LSOF" -a -p "$1" -Fn 2>/dev/null |
-        /usr/bin/grep -F -q -- "$PREFIX"
+    "$LSOF" -a -p "$process_id" -Fn 2>/dev/null |
+        /usr/bin/awk -v root="$path_root" '
+            /^n/ {
+                path = substr($0, 2)
+                if (path == root || index(path, root "/") == 1) {
+                    found = 1
+                }
+            }
+            END { exit(found ? 0 : 1) }
+        '
+}
+
+owns_prefix() {
+    has_open_path "$1" "$PREFIX"
+}
+
+process_name_from_command() {
+    process_command=$1
+    case "$process_command" in
+        *.[Ee][Xx][Ee]*)
+            # The command line is not shell-quoted, so the executable path can
+            # contain spaces. Identify the first .exe suffix before removing
+            # its arguments instead of splitting on the first space.
+            process_executable=${process_command%%.[Ee][Xx][Ee]*}.exe
+            ;;
+        *)
+            process_executable=${process_command%% *}
+            ;;
+    esac
+    process_name=${process_executable##*/}
+    process_name=${process_name##*\\}
+    printf '%s\n' "$process_name"
 }
 
 is_live_helper() {
     process_id=$1
     process_command=$($PS -p "$process_id" -o command= -ww 2>/dev/null | /usr/bin/sed 's/^ *//')
-    process_command=${process_command%% *}
-    process_name=${process_command##*/}
-    process_name=${process_name##*\\}
+    process_name=$(process_name_from_command "$process_command")
     [ -n "$process_name" ] || return 1
     is_helper_name "$process_name" || return 1
     owns_prefix "$process_id"
@@ -112,9 +140,7 @@ list_helpers() {
     [ -x "$LSOF" ] || return 0
     while IFS=' ' read -r process_id process_command; do
         [ -n "$process_id" ] || continue
-        process_command=${process_command%% *}
-        process_name=${process_command##*/}
-        process_name=${process_name##*\\}
+        process_name=$(process_name_from_command "$process_command")
         is_helper_name "$process_name" || continue
         owns_prefix "$process_id" || continue
         printf '%s\n' "$process_id"
@@ -125,16 +151,40 @@ EOF
 
 list_game_processes() {
     [ "$KILL_GAME_PROCESSES" -eq 1 ] || return 0
-    "$PS" -axo pid=,command= -ww 2>/dev/null |
-        /usr/bin/awk -v root="$WINE_GAME_ROOT" 'index($0, root) {print $1}'
+    while IFS=' ' read -r process_id process_command; do
+        [ -n "$process_id" ] || continue
+        process_name=$(process_name_from_command "$process_command")
+        case "$process_name" in
+            *.exe) ;;
+            *) continue ;;
+        esac
+        is_helper_name "$process_name" && continue
+        is_live_game_process "$process_id" || continue
+        printf '%s\n' "$process_id"
+    done <<EOF
+$($PS -axo pid=,command= -ww 2>/dev/null)
+EOF
 }
 
 is_live_game_process() {
     process_id=$1
     process_command=$($PS -p "$process_id" -o command= -ww 2>/dev/null | /usr/bin/sed 's/^ *//')
-    case "$process_command" in
-        *"$WINE_GAME_ROOT"*) ;;
+    process_name=$(process_name_from_command "$process_command")
+    case "$process_name" in
+        *.exe) ;;
         *) return 1 ;;
+    esac
+    is_helper_name "$process_name" && return 1
+    case "$process_command" in
+        *"$WINE_GAME_ROOT"\\*|*"$WINE_GAME_ROOT"/*) ;;
+        *)
+            # Some Windows games spawn a second executable and then exit the
+            # launcher. Wine reparents that child to PID 1, and its command
+            # line may no longer contain the Z: install path. The physical
+            # game-root handle is the fallback association in that case.
+            [ -n "$GAME_ROOT" ] || return 1
+            has_open_path "$process_id" "$GAME_ROOT" || return 1
+            ;;
     esac
     owns_prefix "$process_id"
 }

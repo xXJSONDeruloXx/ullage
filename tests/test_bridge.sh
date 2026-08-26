@@ -48,6 +48,7 @@ write_script "$TEMP_ROOT/wine" \
     'case "$mode" in' \
     '  slow-exit) /bin/sleep 1; exit 7 ;;' \
     '  term|term-hang) trap '\''printf "%s\n" term >>"$WINEPREFIX/wine-events"; /bin/sleep 0.2; exit 143'\'' TERM; while :; do /bin/sleep 1; done ;;' \
+    '  term-ignore) trap "" TERM; while :; do /bin/sleep 1; done ;;' \
     '  term-orphan) (trap "" TERM; while :; do /bin/sleep 1; done) & printf "%s\n" "$!" >"$WINEPREFIX/orphan.pid"; trap '\''printf "%s\n" term >>"$WINEPREFIX/wine-events"; exit 143'\'' TERM; while :; do /bin/sleep 1; done ;;' \
     '  orphan-exit) /bin/sh -c '\''trap "" TERM; exec -a "$0" /bin/sleep 100'\'' "$1" & printf "%s\n" "$!" >"$WINEPREFIX/orphan.pid"; exit 0 ;;' \
     '  *) exit 0 ;;' \
@@ -203,6 +204,50 @@ set -e
 }
 grep -F 'term' "$CASE_PREFIX/wine-events" >/dev/null
 grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
+
+make_case forced-stop term-ignore
+set +e
+FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" \
+    2>"$CASE_PREFIX/bridge-stderr" &
+bridge_pid=$!
+ticks=0
+while [ ! -f "$CASE_PREFIX/wine-events" ] && [ "$ticks" -lt 40 ]; do
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+[ -f "$CASE_PREFIX/wine-events" ] || {
+    printf '%s\n' 'fake Wine did not start before forced-stop test' >&2
+    kill -KILL "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+}
+kill -TERM "$bridge_pid"
+ticks=0
+while [ "$ticks" -lt 120 ]; do
+    bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+    case "$bridge_state" in ''|Z*) break ;; esac
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+case "$bridge_state" in
+Z*|'') ;;
+*)
+    printf '%s\n' 'bridge did not force-reap a TERM-ignoring launcher' >&2
+    kill -KILL "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+    ;;
+esac
+wait "$bridge_pid"
+status=$?
+set -e
+[ "$status" -eq 137 ] || {
+    printf 'expected forced-stop exit 137, got %s\n' "$status" >&2
+    exit 1
+}
+grep -F 'reaped:1' "$CASE_PREFIX/reaper-events" >/dev/null
+grep -F 'wine_exit=137 signal_received=1' "$CASE_LOG" >/dev/null
 
 make_case orphan term-orphan
 set +e

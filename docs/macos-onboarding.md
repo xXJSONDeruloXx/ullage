@@ -136,20 +136,21 @@ also absent on this host. Ullage's read-only bridge preflight stopped at:
 required file is missing: .../ullage/runtime/lsteamclient/x86_64-unix/lsteamclient.so
 ```
 
-This is the current hard blocker for an end-to-end Steam Play test. TIS-100
-is a useful first title because it is 32-bit and does not require the x64
-forwarder, but it still needs the host Unix lsteamclient and i386 Windows
-lsteamclient pair.
+At this stage of the initial setup this was the hard blocker for an
+end-to-end Steam Play test. The later remediation below produced the missing
+host Unix/i386 pair and the x64 forwarder; the current validation record is in
+section 11.
 
 ## Test record
 
-TIS-100 (AppID `370360`) was already owned and was selected as the small
-test title. The native Steam client was restarted with the correctly placed
-depot flag, the Windows depot was downloaded to the internal library, and the
-installed files were verified without modifying the depot contents. The
-native Play attempt and Ullage bridge preflight were then allowed to fail at
-their respective documented boundaries. No Ullage appinfo mapping was
-installed because the required bridge artifacts are absent.
+During the initial onboarding pass, TIS-100 (AppID `370360`) was already owned
+and was selected as the small test title. The native Steam client was restarted
+with the correctly placed depot flag, the Windows depot was downloaded to the
+internal library, and the installed files were verified without modifying the
+depot contents. The native Play attempt and Ullage bridge preflight were then
+allowed to fail at their respective documented boundaries. No Ullage appinfo
+mapping was installed at that time because the required bridge artifacts were
+absent.
 
 The Windows depot remains installed at:
 
@@ -157,7 +158,11 @@ The Windows depot remains installed at:
 $HOME/Library/Application Support/Steam/steamapps/common/TIS-100
 ```
 
-## Still needed for the first full Ullage run
+## Prerequisites identified before the first full Ullage run
+
+These were the outstanding requirements before the source-backed runtime
+remediation. Sections 6 through 8 record how the disposable build and
+GameHub-compatible launch contract closed them.
 
 1. A clean, pinned Wine/Proton source checkout containing the matching
    `dlls/lsteamclient` source.
@@ -377,13 +382,13 @@ runtime yet. Those symlinks were test-only and are not a release layout; the
 next build should eliminate or satisfy that symbol dependency before another
 game launch.
 
-The remaining test gate is intentionally concrete: use the exact GameHub
-SandboxFS/base-prefix launch contract, a client payload that loads, and an
-lsteamclient build compatible with this Wine runtime; then verify the Peggle
-window, Steam `App Running`/Stop lifecycle, and a clean bridge log. TIS-100
-(AppID 370360) remains an additional matrix candidate, but its native Play
-path previously failed earlier with Steam's `OS Error 0` because no Ullage
-mapping was installed.
+The remaining test gate at that point was intentionally concrete: use the
+exact GameHub SandboxFS/base-prefix launch contract, a client payload that
+loads, and an lsteamclient build compatible with this Wine runtime; then verify
+the Peggle window, Steam `App Running`/Stop lifecycle, and a clean bridge log.
+TIS-100 (AppID `370360`) remained an additional matrix candidate, but its
+native Play path had previously failed with Steam's `OS Error 0` because no
+Ullage mapping was installed.
 
 ### 8. Successful matrix reproduction after the GameHub remediation
 
@@ -456,3 +461,83 @@ observed FAT32 volume is suitable for disposable artifacts but has filename
 and file-size constraints. Install/remove should be transactional and leave a
 recoverable mapping receipt, so a failed first attempt does not require
 manually undoing Steam depot or prefix state.
+
+### 10. Native Steam Stop remediation and generic process association
+
+The lifecycle defect was not specific to Peggle or PopCap. The first reaper
+implementation selected game processes only when their command line still
+contained the Wine `Z:` spelling of the install root. GameHub's launcher
+exited after spawning the game, and the surviving guest executable was
+reparented to PID 1 with no install-root argument. Its `lsof` record still
+showed both the physical game install and the selected virtual prefix.
+
+The reaper now accepts any guest `.exe` that is prefix-scoped and either keeps
+the mapped install root in its command line or has an open handle under the
+canonical physical game root. It parses executable paths containing spaces up
+to the first `.exe` suffix, excludes known Wine infrastructure helpers, and
+does not use global process-name kills. The bridge's native Steam stop path
+also gives the exact Wine launcher a bounded TERM grace period; if that
+launcher ignores TERM, it is force-reaped and the same prefix-scoped game
+association cleanup runs. This applies to launchers that spawn a different
+game executable, not just this title.
+
+The focused shell/Python checks and full `make check` pass after this change;
+the bridge regression suite now also covers a TERM-ignoring launcher and
+requires the bounded fallback to complete.
+The post-change native UI run launched Peggle Deluxe (AppID `3480`) at
+`13:28:30`; Steam showed `Peggle Deluxe - Running` and CoreGraphics saw the
+Wine window `Peggle Deluxe 1.01`. After Stop and Confirm at `13:29:14`, the
+bridge recorded a native stop request, reaped the detached game PID
+`50084`, and returned the selected prefix to a clean state. Steam's content
+log returned to `Fully Installed` at `13:29:19`, and a fresh Steam Helper
+screenshot showed Play with no Running suffix. No Peggle, PopCap, wineserver,
+or Ullage bridge process remained afterward.
+
+The bridge log reports `wine_exit=137 signal_received=1` for this run because
+GameHub's `start.exe` wrapper ignored TERM and required the bounded fallback
+SIGKILL. Steam's application state is clean; normalizing that user-requested
+forced-stop status to the existing `143` convention is a follow-up polish,
+not a process-leak blocker.
+
+### 11. Second matrix reproduction and current host state
+
+The runtime gap is now closed for this host by the disposable, source-backed
+artifact package staged at:
+
+```text
+/Users/danhimebauch/Developer/ullage-runtime-work/ullage-bridge-artifacts-20260826
+```
+
+It contains the x86_64 Unix sidecar, the i386 and x86_64 Windows bridges, and
+the canonical-name x64 Steam client forwarder. The same package is published
+from `ullage-patches` as release `runtime-macos-2026-08-26`. No full Proton
+distribution build was needed; the scoped lsteamclient components were enough
+for the known-good game validation.
+
+TIS-100 (AppID `370360`) was then mapped with `ullage-install` into GameHub's
+container 2 using its recorded base prefix, `WINEARCH=win64`, and SandboxFS
+manifest. The already downloaded Windows depot is 50,190,783 bytes and its
+`tis100.exe` entry is PE32. Native Steam Play through the helper reached
+`TIS-100 - Running` at `13:38:48`. CoreGraphics found a Wine window titled
+`TIS-100`, and the captured surface showed the rendered BIOS/diagnostic screen:
+
+```text
+/Users/danhimebauch/Developer/ullage-runtime-work/tis100-native-steam-title-20260826.png
+SHA256 1442841125c04cd6b794244016a5b5ac4665f3dc8f8d1b5d354ef4a9f19134c1
+```
+
+The native Stop confirmation was accepted at `13:40:20`; Steam returned to
+`Fully Installed` at `13:40:25`, and the helper showed Play again. The bridge
+logged `native Steam requested stop`, `reaped_helper_pids=none`,
+`reaped_game_pids=none`, and `wine_exit=137 signal_received=1`. No TIS-100,
+selected-prefix, bridge, or wineserver process remained. A few unrelated
+`start.exe` processes from older GameHub experiments remained outside the
+selected prefix and were intentionally not touched, which confirms the
+reaper's scope boundary.
+
+This gives two known-good matrix reproductions on the new Mac: Peggle Deluxe
+(AppID `3480`, including a detached `popcapgame1.exe` cleanup) and TIS-100
+(AppID `370360`, including the GameHub base/SandboxFS contract). Both rendered
+through native Steam Play and returned to the installed Play state after native
+Stop. The remaining host gap is optional MinGW probe coverage; it is not
+required for the tested launch/renderer/Stop path.
