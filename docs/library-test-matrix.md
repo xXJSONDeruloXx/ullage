@@ -10,11 +10,18 @@ fresh desktop capture containing the game surface; a Steam page showing
 ## Coverage target
 
 * Entitled AppIDs inventoried: **521**.
-* Minimum for the requested 10%: **53 unique AppIDs**.
-* Unique AppIDs tested in this run: **46**.
-* Remaining: **7**.
+* Minimum for the requested 30%: **157 unique AppIDs**.
+* Unique AppIDs tested in this run: **49**.
+* Remaining to the 30% target: **108**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
+
+Each new title is also a stop-and-fix gate. When a launch, renderer, Steam
+Stop/relaunch, Cloud mapping, or Steamworks barrier appears, title coverage
+pauses until the issue is classified. If it belongs inside Ullage's launch,
+supervision, mapping, or runtime-boundary scope, it is fixed and the affected
+control is rerun before the ledger advances. Runtime defects outside that
+boundary are recorded with evidence and do not receive speculative fixes.
 
 Runtime for this pass is the GameHub Wine installation `10000073`, GPTK
 `gptk-3.0-3`, the external lsteamclient runtime, and the shared experimental
@@ -53,6 +60,9 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 2324650 | The Murder of Sonic the Hedgehog | win64 | P | P | P | P | Newly downloaded 290 MB / 448 MB installed Windows depot from a Windows+macOS app. The nested Unity title screen rendered through the Windows entry while the macOS entry remained untouched; native Stop and Steam uninstall were clean. |
 | 1140290 | Murder by Numbers | win32 | P | F | I | P | Newly downloaded 473 MB / 889 MB installed depot; `--cloud-native` mapped `WinAppDataLocalLow` and restored it on removal. Steam reached App Running, but the game exited after six seconds with `wine_exit=5` before a surface or save file appeared; native Stop was not needed. |
 | 400 | Portal | win32 | P | P | P | P | Newly downloaded 2.6 GB / 4.1 GB installed depot. Steam advertised an absent optional Portal RTX Windows entry; Ullage redirected only the installed base `hl2.exe`, leaving that unavailable entry native. The Source menu rendered, native Stop returned to Play, and Steam uninstall plus Ullage removal left no Wine/game processes; Steam's small save directory was preserved. |
+| 4156220 | Lootbane Playtest | win64 | P | P | P | P | Newly downloaded 137 MB / 209 MB installed depot. The first few seconds were black while the title booted, then the pixel-art menu rendered fully. Native Stop returned to Play and Steam uninstall plus Ullage removal left no Lootbane/Wine helpers. |
+| 1082710 | Bug Fables: The Everlasting Sapling | win64 | P | P | P | P | Newly downloaded 199 MB / 276 MB installed depot with a `gameinstall` Cloud root. Native Steam showed the checked Cloud state, the mapped Unity title reached its language screen, native Stop returned cleanly, and uninstall plus Ullage removal removed the mapping while preserving the small save/config files. |
+| 1256230 | Hyperbolica | win64 | P | P | P | P | Newly downloaded 247 MB / 902 MB installed depot with two Windows launch options and a `WinAppDataLocalLow` Cloud root. Both the default and Steam VR chooser options passed their preserved argument through distinct launchers and rendered the 3D scene; both native Stop cycles and cleanup were clean. |
 | 3520070 | Megabonk Demo | win64 | P | P | P | P | Freshly downloaded 51 MB / 157 MB installed demo; both DX11/default and DX12 chooser options rendered the menu through distinct per-entry launchers. The DX12 selection preserved one Steam argument; native Stop returned cleanly for both runs. |
 | 2921380 | Caribbean Crashers | win32 | P | F | P | P | Fresh run reached Steam Running but produced only NW.js crashpad/GPU/utility zombies and no visible game surface. After the supervisor fix, native Stop logged the Steam termination event, returned to Play, and left no Caribbean/Wine helpers. |
 | 2827560 | 100 Romantic Cats | win64 | P | P | P | P | Freshly downloaded 49 MB depot; full-screen Unity coloring scene rendered with Steam overlay visible; native Stop returned cleanly. |
@@ -121,6 +131,9 @@ transcribed here.
 | 2324650 | `~/.ullage/logs/2324650-murder-sonic.log`; `native Steam requested stop`; `reaped_helper_pids=78093 78099 78105 78114 78117 78149 78179`; `wine_exit=143 signal_received=1` | `21:10:11` App Running; `21:11:26` Terminating; `21:11:28` Fully Installed; `21:12:39` Uninstalled; desktop capture showed the rendered Unity title surface |
 | 1140290 | `~/.ullage/logs/1140290-murder-by-numbers.log`; early process exit `wine_exit=5 signal_received=0`; no residual Wine/game processes | `21:16:54` App Running; `21:17:00` Fully Installed after the early exit; `21:18:48` Uninstalled; no native Stop was required; native Cloud mapping was restored during removal |
 | 400 | `~/.ullage/logs/400-portal-multi.log`; `native Steam requested stop`; `reaped_helper_pids=none`; `reaped_game_pids=none`; `wine_exit=143 signal_received=1` | `21:26:32` App Running; `21:28:59` Terminating; `21:29:01` Fully Installed; `21:29:54` Uninstalling and `21:29:55` Uninstalled; desktop capture showed the rendered Portal Source menu; the absent Portal RTX entry was skipped and the remaining save directory was preserved |
+| 4156220 | `~/.ullage/logs/4156220-lootbane.log`; `native Steam requested stop`; `reaped_helper_pids=none`; `reaped_game_pids=none`; `wine_exit=143 signal_received=1` | `21:39:13` App Running; `21:40:44` Terminating; `21:40:46` Fully Installed; `21:41:56` Uninstalling and `21:41:56` Uninstalled; delayed desktop capture showed the rendered pixel-art menu after the initial black boot surface |
+| 1082710 | `~/.ullage/logs/1082710-bug-fables.log`; `native Steam requested stop`; `reaped_helper_pids=92548 92554 92559 92570 92576 92604 92642 92648`; `wine_exit=143 signal_received=1` | `21:47:05` App Running; `21:48:47` Terminating; `21:48:49` Fully Installed; `21:50:26` Uninstalling and `21:50:26` Uninstalled; desktop capture showed the rendered language screen; native Cloud mapping was restored during removal and no selected-prefix processes remained |
+| 1256230 | `~/.ullage/logs/1256230-hyperbolica.log`; two runs logged `args=0` and `args=1`, each with `native Steam requested stop`, eight reaped helper PIDs, and `wine_exit=143 signal_received=1` | `21:56:03` default App Running; `21:57:36` Terminating; `21:58:48` VR-option App Running; `22:00:30` Terminating; `22:02:15` Uninstalling and Uninstalled; desktop captures showed the rendered 3D scene for both options and native Cloud mapping was restored |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every
