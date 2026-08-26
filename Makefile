@@ -2,7 +2,7 @@ CC ?= clang
 CFLAGS ?= -O2 -Wall -Wextra -Werror
 PYTHON3 ?= python3
 
-.PHONY: all check clean
+.PHONY: all check integration clean
 
 all: bin/ullage-fd-exec
 
@@ -15,7 +15,7 @@ check:
 		sh -n "$$script"; \
 	done
 	@sh tests/test_install_options.sh
-	@$(PYTHON3) -m py_compile bin/*.py
+	@$(PYTHON3) -m py_compile bin/*.py tests/*.py
 	@$(PYTHON3) bin/ullage-appinfo.py --help >/dev/null
 	@$(PYTHON3) bin/ullage-mapping.py --help >/dev/null
 	@$(PYTHON3) tests/test_appinfo.py
@@ -26,6 +26,9 @@ check:
 	@$(PYTHON3) tests/test_cloud_native.py
 	@sh tests/test_bridge.sh
 	@sh tests/test_steamworks_probe.sh
+
+integration: all
+	@$(PYTHON3) tests/test_install_transaction.py
 
 clean:
 	@if test -e bin/ullage-fd-exec; then unlink bin/ullage-fd-exec; fi

@@ -28,6 +28,13 @@ make
 make check
 ~~~
 
+The opt-in installer transaction rehearsal requires native Steam to be fully
+quit because it edits only a temporary appcache:
+
+~~~sh
+make integration
+~~~
+
 ## Install
 
 Pass explicit runtime roots so the repository does not select a provider or
