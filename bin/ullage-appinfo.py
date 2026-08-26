@@ -10,10 +10,12 @@ before replacing the file on disk.
 import argparse
 import hashlib
 import json
+import ntpath
 import os
 import struct
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 
 APPINFO_28 = 0x107564428
@@ -22,6 +24,26 @@ APPINFO_29 = 0x107564429
 
 class AppInfoError(Exception):
     pass
+
+
+def _depot_path(install_dir, windows_path):
+    """Resolve a relative Windows path without leaving an install directory."""
+    if not isinstance(windows_path, str) or not windows_path:
+        return None
+    normalized = windows_path.replace("\\", "/")
+    if (
+        ntpath.isabs(windows_path)
+        or ntpath.splitdrive(windows_path)[0]
+        or normalized.startswith("/")
+    ):
+        return None
+    try:
+        root = Path(install_dir).expanduser().resolve()
+        candidate = root / normalized
+        candidate.resolve(strict=False).relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return candidate
 
 
 @dataclass
@@ -291,19 +313,26 @@ class AppInfo:
                 value.strip().lower() for value in str(oslist).split(",")
             }:
                 continue
-            if install_dir is not None:
-                normalized = executable.replace("\\", "/")
-                if os.path.isabs(normalized):
-                    continue
-                candidate = os.path.join(install_dir, normalized)
-                if not os.path.isfile(candidate) or os.path.islink(candidate):
-                    continue
             workingdir = item.get("workingdir", "")
+            if not isinstance(workingdir, str):
+                workingdir = ""
+            if install_dir is not None:
+                candidate = _depot_path(install_dir, executable)
+                if candidate is None or not candidate.is_file() or candidate.is_symlink():
+                    continue
+                if workingdir:
+                    working_path = _depot_path(install_dir, workingdir)
+                    if (
+                        working_path is None
+                        or not working_path.is_dir()
+                        or working_path.is_symlink()
+                    ):
+                        continue
             result.append(
                 {
                     "entry": str(key),
                     "executable": executable,
-                    "workingdir": workingdir if isinstance(workingdir, str) else "",
+                    "workingdir": workingdir,
                 }
             )
         if not result:

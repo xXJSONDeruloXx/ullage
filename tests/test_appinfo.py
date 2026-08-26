@@ -211,6 +211,37 @@ def main():
             else:
                 raise AssertionError("mismatched restore AppID was accepted")
 
+    for appinfo_version in (MODULE.APPINFO_28, MODULE.APPINFO_29):
+        sections = {
+            "appinfo": {
+                "common": {"oslist": "windows"},
+                "config": {
+                    "launch": {
+                        "0": {"executable": "bin\\Game.exe", "workingdir": "bin"},
+                        "1": {"executable": "..\\outside.exe", "workingdir": ".."},
+                        "2": {"executable": "bin\\Game2.exe", "workingdir": ".."},
+                        "3": {"executable": "C:\\outside.exe", "workingdir": "bin"},
+                        "4": {"executable": "/tmp/outside.exe", "workingdir": "bin"},
+                        "5": {"executable": "bin\\Link.exe", "workingdir": "bin"},
+                    }
+                },
+            }
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "install"
+            (root / "bin").mkdir(parents=True)
+            (root / "bin" / "Game.exe").write_bytes(b"pe")
+            (root / "bin" / "Game2.exe").write_bytes(b"pe")
+            (Path(directory) / "outside.exe").write_bytes(b"pe")
+            (root / "bin" / "Link.exe").symlink_to(root / "bin" / "Game.exe")
+            filename = Path(directory) / "appinfo.vdf"
+            filename.write_bytes(make_appinfo(appinfo_version, sections=sections))
+            appinfo = MODULE.AppInfo(filename)
+            launches = appinfo.windows_launches(42, root)
+            assert launches == [
+                {"entry": "0", "executable": "bin\\Game.exe", "workingdir": "bin"}
+            ]
+
     print("appinfo patch/restore: ok")
 
 
