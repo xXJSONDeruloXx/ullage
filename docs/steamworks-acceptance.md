@@ -43,6 +43,7 @@ the acceptance criterion.
 | 334940 | Yoku's Island Express | P | F | I | no supported Windows root | P | Fresh Play-button run reached Wine and exited 0 without a visible surface. |
 | 356400 | Thumper | P | F | I | P (`gameinstall`) | P | Fresh Win8 run watched all three existing `savedata` files through the mapped Steam install directory; no surface. |
 | 990630 | The Last Campfire | P | F | I | P (native mapping installed) | P | Fresh Play-button run reached Wine and exited 0 without a visible surface. |
+| 1880620 | Once Upon A KATAMARI | P | F | I | I (mapping installed; no save round trip) | P | Native Play reached Running twice, but Wine reported `Application load error 3:0000065432` before the Unity game assembly or game Steam API DLL loaded. A separate staged API probe passed initialization, identity, ownership, and DLC enumeration; that does not certify the shipped game session. |
 
 The `P` lifecycle result means native Steam emitted an `App Running` transition,
 the bridge logged `wine_exit`, and the client returned the AppID to its
