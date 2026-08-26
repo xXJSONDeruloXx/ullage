@@ -339,7 +339,13 @@ USER_VALUE=${USER:-$(id -un)}
 LOGNAME_VALUE=${LOGNAME:-$USER_VALUE}
 LANG_VALUE=${LANG:-en_US.UTF-8}
 PATH_VALUE=/usr/bin:/bin:/usr/sbin:/sbin
-WINEDLLPATH_VALUE=${WINEDLLPATH_VALUE:-$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine}
+# Keep the command-line spelling as the source of truth. The installer writes
+# WINEDLLPATH_VALUE into generated config for compatibility with older state,
+# so retain it only when no explicit --wine-dllpath was supplied.
+if [ -z "$WINE_DLLPATH_VALUE" ] && [ -n "${WINEDLLPATH_VALUE:-}" ]; then
+    WINE_DLLPATH_VALUE=$WINEDLLPATH_VALUE
+fi
+WINEDLLPATH_VALUE=${WINE_DLLPATH_VALUE:-$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine}
 DYLD_FALLBACK_LIBRARY_PATH_VALUE=${DYLD_FALLBACK_LIBRARY_PATH_VALUE:-$GPTK_ROOT/external:$WINE_ROOT/lib:$WINE_ROOT/lib/wine/x86_64-unix}
 WINEDLLOVERRIDES_VALUE=${WINEDLLOVERRIDES_VALUE:-lsteamclient=b}
 STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS"
