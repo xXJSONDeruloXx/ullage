@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **73**.
-* Remaining to the 30% target: **84**.
+* Unique AppIDs tested in this run: **74**.
+* Remaining to the 30% target: **83**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -47,12 +47,13 @@ will require a user action-time acceptance before they can be exercised.
 
 These titles reached the Ullage boundary but are not included in the tested
 count because they did not produce a usable renderer result. Their boundary
-and cleanup evidence is still useful, and coverage remains **73/157**.
+and cleanup evidence is still useful, and coverage remains **74/157**.
 
 | AppID | Title | Evidence | Classification |
 | ---: | --- | --- | --- |
 | 442070 | Drawful 2 | The valid standalone Windows entry launched through Ullage; the advertised `launch_mp.bat` option was absent from the depot and is now hidden by the `ullage-disabled` marker. The native Steamworks probe passed initialization, identity, ownership, and stats enumeration; the game showed `Application load error 3:0000065432`. Native Stop returned to Play with no selected-prefix processes. | Multi-option launch handling is fixed and covered by real Steam plus fixture tests. The remaining failure is a title/SteamStub loader boundary; it is not an Ullage mapping or supervision failure. Unpacking protected executables would violate the untouched-depot boundary and is not part of Ullage. |
 | 219150 | Hotline Miami | The native Windows entry launched the 32-bit Hotline launcher surface, but its handoff did not produce a game surface. Explicit `--launch-entry 0` trials with the depot's `HotlineMiami_Original.exe` and `HotlineGL.exe` also produced no usable surface; the latter exited with `wine_exit=53`. Native Stop returned to Play for the launcher and original-binary attempts, with no selected-prefix processes left. | The Steam/32-bit bridge and Stop path are healthy. The remaining failure is the title's launcher/runtime path under this Wine/GPTK combination; no Ullage renderer or depot modification is justified. Its `WinMyDocuments` Cloud root was mapped, but no save round trip occurred. |
+| 397950 | Clustertruck | Native Play reached a rendered Unity Clustertruck Configuration window and Steam Stop returned to Play, but no game scene appeared after an extended wait. The x86 Windows process and selected-prefix cleanup were healthy; no supported Windows Cloud root was configured because appinfo sets `hidecloudui=1`. | The remaining barrier is the title's Unity configuration/launcher handoff under this Wine/GPTK runtime; no Ullage mapping or supervision defect was found. |
 
 ## Current run
 
@@ -135,6 +136,7 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 322190 | SteamWorld Heist | win32 | P | P | P | P | Freshly downloaded 191 MB 32-bit Windows depot. The long intro and interactive menu rendered with native Steam overlay attachment; two native Play/confirmed-Stop cycles returned to Play with no selected-prefix processes. Its appinfo uses `MacAppSupport` rather than a supported Windows UFS root, so the native page remained `Steam Cloud Out of Date`; Steam uninstall and Ullage removal completed cleanly. |
 | 4663130 | Normal Golf Game Demo | win64 | P | P | P | P | Freshly downloaded 529 MB Windows-only nested Unity depot (`Normal/Normal Golf Game.exe`). Two native Play/confirmed-Stop cycles reached the rendered streamer-mode surface with `gameoverlayui` attached, returned to Play, and left no selected-prefix Wine/game processes. No Auto-Cloud metadata. |
 | 2677470 | POOLS Demo | win64 | P | P | P | P | Freshly downloaded 1.1 GB Windows/macOS/Linux Unity/OpenXR depot. Auto mode mapped both Windows entries while preserving the native macOS/Linux entries; three native Play/confirmed-Stop cycles reached the rendered default menu with `gameoverlayui` attached and left no selected-prefix processes. Native Cloud mapped `WinAppDataLocalLow/Tensori/Pools` into the prefix; Steam launch/exit checks and the checked page state passed, but the title created no `.sav` file and no save round trip was proven. The OpenXR/BetaKey option was not selected by this macOS session. |
+| 2457890 | DRACOMATON | win64 | P | P | P | P | Freshly downloaded 285 MB Windows/macOS Unity depot with a `gameinstall` Cloud root. Native Play and relaunch reached the rendered DRACOMATON menu with `gameoverlayui` attached; native Cloud downloaded and watched two JSON saves through the mapped `MacAppSupport` path. Both confirmed Stop cycles returned to Play and reaped the Wine helper set; Steam uninstall plus Ullage removal restored the original launch and removed the owned Cloud link. |
 
 ## Per-title evidence
 
@@ -211,6 +213,8 @@ transcribed here.
 | 322190 | `~/.ullage/logs/322190-steamworld-heist.log`; two native Stop requests each ended with `wine_exit=143 signal_received=1` and no selected-prefix processes | Native Play reached the rendered intro and interactive SteamWorld Heist menu on the first run and the intro again on relaunch; `gameoverlayui` attached to the Windows process. Both Stop confirmations returned to Play, Steam removed the depot, and Ullage restored `Heist.exe`. No Windows Cloud mapping was applied because the metadata exposed only `MacAppSupport`; the native page continued to report Cloud Out of Date. |
 | 4663130 | `~/.ullage/logs/4663130-normal-golf.log`; two native Stop requests each ended with `wine_exit=143 signal_received=1` and `reaped_game_pids=none` | Freshly downloaded nested x64 Unity depot. Both native Play cycles showed the rendered streamer-mode surface with `gameoverlayui` attached; both confirmed Stop flows produced `App Running` -> `Terminating` -> `Fully Installed` and left no matching game, overlay, Wine, or wineserver processes. |
 | 2677470 | `~/.ullage/logs/2677470-pools.log`; three native Stop requests each ended with `wine_exit=143 signal_received=1` and `reaped_game_pids=none` | Freshly downloaded multi-platform Unity/OpenXR depot. Auto mapping patched Windows entries 0 and 3 into separate launchers; native Play selected the default entry and rendered the POOLS menu with `gameoverlayui` attached on all three runs. Native Cloud logged launch and exit evaluation of `/Users/kurt/Library/Application Support/Ullage/2677470/Tensori/Pools`, found zero matching `.sav` files, and left the page checked. Steam uninstall and Ullage removal restored both launch entries and removed the Cloud link/override. |
+| 2457890 | `~/.ullage/logs/2457890-dracomaton.log`; two native Stop requests each ended with `wine_exit=143 signal_received=1`, eight helper PIDs reaped, and `reaped_game_pids=none` | Fresh Windows/macOS Unity depot. Both native Play cycles rendered the DRACOMATON menu with `gameoverlayui` attached. Native Cloud downloaded `RunData.json` and `SaveData.json` into the mapped `MacAppSupport` path, watched both on launch, and evaluated both unchanged files on exit. Steam uninstall and Ullage removal restored `Dracomaton/DRACOMATON.exe` and removed the owned Cloud link. |
+| 397950 | `~/.ullage/logs/397950-clustertruck.log`; native Stop ended with `wine_exit=143 signal_received=1`, `reaped_helper_pids=39547`, and `reaped_game_pids=none` | Freshly downloaded 453 MB depot. Native Play reached the rendered Clustertruck Configuration window but not a game scene; Stop returned to Play and Steam uninstall plus Ullage removal restored `Clustertruck.exe`, leaving only the title's small generated `output_log.txt`. |
 
 The ledger is updated as each additional entitlement is installed, exercised,
 and cleaned up. It does not claim that a renderer pass proves every
