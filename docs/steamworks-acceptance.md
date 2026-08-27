@@ -439,6 +439,26 @@ the depot with `No Error`; after Steam quit, Ullage removed the mapping and
 left no depot residue. No supported Windows Cloud root, shipped-game
 Steamworks feature, or visible overlay interaction was claimed.
 
+Death Fungeon (AppID `897630`) supplied a fresh 9.51 MB win32 control using the
+unchanged public package. Native Play reached its fullscreen title surface;
+x86 Steam transport and `gameoverlayui` were observed. Fullscreen occluded the
+Steam Helper Stop control, so native Steam exit exercised the generic fallback.
+The delayed receipt recorded `steam_client_exit_observed=true`,
+`reaped_game_processes=1`, eight reaped helpers, `wine_exit=137`, and
+`prefix_clean=true`. Steam uninstalled the depot with `No Error`, and Ullage
+removed the mapping with no selected-prefix residue. No supported Windows
+Cloud root, shipped-game Steamworks feature, or visible overlay interaction was
+claimed.
+
+Jumper Tree (AppID `983650`) supplied a fresh 19.86 MB win32 control using the
+unchanged public package. Native Play reached the mapped `JT Remastered.exe`
+and Steam exposed the native Stop control. Confirmed Stop recorded
+`native_stop_observed=true`, `wine_exit=137`, and `prefix_clean=true`. The
+game's Wine window remained hidden/1x1 in the capture, so this is a launch,
+transport, and lifecycle control rather than a renderer pass. The depot and
+mapping remain installed temporarily for the next cleanup step; no supported
+Windows Cloud root or shipped-game Steamworks feature was claimed.
+
 The current-package Cloud fixture checks also exposed a test-harness boundary,
 not a mapper defect. Gravity Circuit's mapped `WinAppDataRoaming` tree was
 empty; a unique `.sav` fixture was present before native Play, but Steam's

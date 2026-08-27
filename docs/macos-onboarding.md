@@ -1168,3 +1168,25 @@ and `prefix_clean=true`; a post-run process check found no selected-prefix
 residue. Steam uninstalled the depot with `No Error`, and Ullage removed the
 mapping after Steam quit. This confirms that a fullscreen title can validate
 launch, transport, and generalized cleanup without a per-title workaround.
+
+### 39. Small fullscreen titles can validate delayed client-exit cleanup
+
+Death Fungeon (AppID `897630`) supplied a fresh 9.51 MB win32 external-library
+control using the current public package `2026.08.26-3`. Native Play rendered
+the fullscreen title surface, loaded the x86 Steam transport, and attached
+`gameoverlayui`. The fullscreen surface hid the Steam Helper Stop control, so
+quitting native Steam exercised the generic client-exit fallback. The receipt
+appeared after the bridge's bounded asynchronous drain and recorded one reaped
+game process, eight helpers, `steam_client_exit_observed=true`,
+`wine_exit=137`, and `prefix_clean=true`. This is a useful small control for
+the corrected unpacked-child reap and delayed receipt path.
+
+### 40. A hidden game window can still validate native Stop
+
+Jumper Tree (AppID `983650`) supplied a fresh 19.86 MB win32 external-library
+control using the current public package. Native Play reached the mapped
+`JT Remastered.exe`, and the Steam page exposed its native Stop control. The
+confirmed Stop receipt recorded `native_stop_observed=true`, `wine_exit=137`,
+and `prefix_clean=true`. The Wine window remained hidden/1x1 in capture, so no
+renderer pass is claimed. This separates a title-owned presentation boundary
+from the launch, transport, and lifecycle checks that did pass.
