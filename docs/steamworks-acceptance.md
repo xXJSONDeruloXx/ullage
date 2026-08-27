@@ -250,12 +250,15 @@ Cloud feature claim here.
 
 DRACOMATON (AppID `2457890`) supplied a current win64 renderer, overlay
 attachment, native Stop, and Cloud control with the unchanged public package.
-The healthy `gameinstall` mapping let native Steam download and watch the real
-`RunData.json` and `SaveData.json` files; both were skipped as unmodified on
-exit. Because the test library is an MS-DOS FAT32 volume, macOS also created
-AppleDouble `._*.json` sidecars, and Steam uploaded those sidecars successfully.
-This proves the native Cloud transfer path, but not a game-written save change;
-the sidecar behavior is recorded as a host-filesystem boundary. Steam
+The healthy `gameinstall` mapping let native Steam reconcile a pre-launch local
+divergence by downloading the existing remote `SaveData.json`, then watch the
+real `RunData.json` and `SaveData.json` files. A reversible marker edited while
+the game was running uploaded successfully on native Stop, together with the
+`._SaveData.json` AppleDouble sidecar created by the external MS-DOS FAT32
+library. Restoring the original 6,261-byte save and repeating native Stop
+uploaded the original bytes as the final Cloud state. This proves both native
+Cloud directions while preserving the user's save; the sidecar remains a
+host-filesystem artifact to account for in future FAT32 tests. Steam
 uninstalled the depot with `No Error`, preserving the small save/config
 directory, and Ullage removed the mapping cleanly.
 

@@ -923,3 +923,25 @@ fallback and left clean prefixes, but it ended the app before the native Cloud
 exit evaluation that would have tested the disposable changed-file fixtures.
 These runs are recorded as lifecycle/transport evidence only; they do not
 justify a Cloud implementation change or a game-specific workaround.
+
+### 26. Current-package DRACOMATON proves a changed-save Cloud round trip
+
+DRACOMATON (AppID `2457890`) closed the remaining changed-save test gap on the
+current public runtime package `2026.08.26-3`. The original external-library
+`SaveData.json` was backed up with SHA-256
+`580e939cd2630e33e70e49c9be531c2e3bd4dca5bf3203fdd922ae9270b259a6`.
+Before the first launch, a reversible `_ullageProbe` marker made the local file
+diverge from the existing Cloud copy. Native Steam downloaded the existing
+remote save and restored the original hash before launch. While the game was
+running, the marker was added again; native Stop then evaluated the
+`gameinstall` `*.json` rule and uploaded the modified save and the FAT32
+`._SaveData.json` sidecar successfully (Cloud ChangeNumber 3).
+
+The exact original bytes were restored before a second native launch. Steam
+recognized the local SHA mismatch against its cache, and the subsequent native
+Stop uploaded the 6,261-byte original save as Cloud ChangeNumber 4. The final
+local hash matched the backup exactly. Both native-stop receipts recorded
+`native_stop_observed=true`, `wine_exit=137`, and `prefix_clean=true`. This is
+generic mapper and Steam Cloud evidence; no title-specific Ullage code change
+was needed. The `._` upload is a recoverable host-filesystem artifact of the
+external MS-DOS FAT32 library, not part of the game's logical save.

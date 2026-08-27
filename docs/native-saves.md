@@ -64,12 +64,13 @@ The following behavior is covered by tests or real runs:
   boundary, not a successful Cloud transfer, so no upload or round trip is
   claimed.
 * DRACOMATON exercised a current win64 `gameinstall` mapping on the public
-  package. Native Steam downloaded and watched its two real JSON saves, skipped
-  both as unmodified on exit, and completed an upload of macOS AppleDouble
-  `._*.json` sidecars created on the external MS-DOS FAT32 library. This is
-  successful native Cloud transfer evidence, but not a changed-save round trip;
-  the sidecars are a host-filesystem artifact to account for when testing
-  `gameinstall` roots on non-APFS volumes.
+  package. Native Steam downloaded the existing remote save when a local
+  divergence was present, then a reversible marker edited during the run was
+  uploaded on native Stop together with the FAT32-generated `._SaveData.json`
+  sidecar. Restoring the exact original 6,261-byte save and repeating native
+  Stop uploaded the original bytes as the final Cloud state. The sidecar is a
+  host-filesystem artifact to account for when testing `gameinstall` roots on
+  non-APFS volumes.
 * SPY Fox in: Cheese Chase exercised a current win32 `gameinstall` mapping on
   the public package; the native Cloud link was healthy, but no modified save
   round trip was attempted. Steam uninstall and Ullage removal removed the
