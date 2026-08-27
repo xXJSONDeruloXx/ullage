@@ -232,6 +232,22 @@ existing depot was preserved and Ullage restored the original Steam launch
 entry after the run; no Cloud claim applies because the title has no
 supported Windows root.
 
+Peggle Extreme (AppID `3483`) exposed a separate generalized appinfo edge on
+the same current package. Its Windows depot records a relative
+`PeggleExtreme.exe` launch without either a launch or common `oslist`; the
+mapper previously rejected it as having no usable Windows PE launch. Commit
+`be02c66` now treats a platformless relative `.exe` as the Windows signal while
+continuing to reject explicit non-Windows annotations, with installed and
+catalog fixture coverage. The fresh 22 MB depot then launched through native
+Steam and rendered the Extreme title screen; x86 lsteamclient and
+`gameoverlayui -gameid 3483` were observed. Fullscreen occlusion prevented a
+native Stop click, so the native Steam client-exit fallback reaped one game
+process and eight helpers; the receipt recorded
+`steam_client_exit_observed=true`, `wine_exit=137`, and a clean prefix. Steam
+uninstalled the depot and Ullage removed the mapping. The overlay process was
+observed but no visible overlay interaction is claimed, and the title has no
+Cloud feature claim here.
+
 The current Gravity Circuit x64 probe ran on 2026-08-27 with the unchanged
 public package `2026.08.26-3` and an unmodified copy of the depot's
 `steam_api64.dll`. It returned `steam_api_load=1`, `steam_api_init=1`, a

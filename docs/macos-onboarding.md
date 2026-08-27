@@ -834,3 +834,33 @@ its fullscreen surface stayed on the loading screen for about one minute at
 high child CPU. The generic Steam-client exit fallback eventually reaped the
 game and helpers cleanly; Ullage then restored the original launch entry and
 left the user's depot installed.
+
+### 21. Windows-only Steam launches may omit platform annotations
+
+Peggle Extreme (AppID `3483`) provided a small fresh-depot onboarding check.
+Its appinfo record contained a relative `PeggleExtreme.exe` launch but omitted
+both `config.oslist` and `common.oslist`. Before the fix, Ullage reported:
+
+```text
+AppID 3483 has no usable Windows PE launch
+```
+
+The installed target was independently verified as a PE32 Windows executable,
+so this was a mapper metadata inference gap rather than a missing depot. Commit
+`be02c66` fixes it generically: an explicit non-Windows annotation still
+excludes an entry, while a platformless relative `.exe` supplies the remaining
+Windows signal. The installed-library and not-installed catalog paths are both
+covered by `tests/test_cli.py`; `make check` passed.
+
+With the unchanged public runtime package `2026.08.26-3`, the 22 MB external
+depot rendered the Peggle Extreme title screen through native Steam. The
+bridge log showed the GameHub Wine container, preserved Steam transport, x86
+lsteamclient, and the native overlay renderer process attached to AppID 3483.
+The fullscreen game occluded the Steam Helper screenshot, and the overlay
+shortcut produced no visible overlay frame, so only process-level overlay
+evidence is recorded. Quitting the native client exercised the generic fallback
+and produced `steam_client_exit_observed=true`, `wine_exit=137`, one reaped game
+process, eight reaped helpers, and a clean prefix in
+`~/.ullage/sessions/3483/last.json`. Steam then uninstalled the depot with
+`No Error`, and Ullage removed the mapping; the external manifest, depot
+directory, and per-game mapping files were absent afterward.
