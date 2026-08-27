@@ -821,4 +821,10 @@ different boundary: its `gameinstall` mapping and rendered main menu passed,
 but Steam explicitly reported `Sync Disabled`/`AutoCloud is disabled` and no
 `gameoverlayui` process attached. Native Stop, Steam uninstall, and Ullage
 mapping cleanup still passed, so this title is useful for separating title
-capability from bridge lifecycle correctness.
+capability from bridge lifecycle correctness. Portal 2 exposed a separate
+Steam onboarding mismatch: the install dialog reported 11.88 GB even though
+the appinfo estimate was much smaller. Its external-volume reservation stayed
+at 1% while preallocating 2.155 GB at roughly 1 MB/s, so the queued download
+was paused and uninstalled as a bounded check rather than treated as a small
+test. Steam removed the manifest and staging area with `No Error`, and no
+Portal 2 row was added to the acceptance matrix.
