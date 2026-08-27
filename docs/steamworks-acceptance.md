@@ -56,6 +56,7 @@ the acceptance criterion.
 | 2677470 | POOLS Demo | P | P | I; overlay observed | I (`WinAppDataLocalLow` mapping; no save round trip) | P | Fresh multi-platform Unity/OpenXR depot. Auto mode patched Windows entries 0 and 3 into separate launchers while preserving native macOS/Linux entries. Three native default Play/confirmed-Stop cycles rendered the POOLS menu and returned cleanly; Steam Cloud launch/exit evaluation watched the prefix-side `Tensori/Pools` path and found no matching save files. The OpenXR/BetaKey option was not selected by this macOS session. |
 | 2457890 | DRACOMATON | P | P | I; overlay observed | P (`gameinstall` mapped to `MacAppSupport`; two files downloaded and watched) | P | Fresh Windows/macOS Unity depot. Native Play and relaunch rendered the DRACOMATON menu with `gameoverlayui` attached. Native Cloud downloaded and watched `RunData.json` and `SaveData.json` through the owned `MacAppSupport` mapping; both exit evaluations found the files unchanged. Native Stop returned to Play and reaped the selected-prefix helper set. |
 | 792100 | 7 Billion Humans | P | F | I | I (`WinAppDataRoaming` mapping; zero watched files) | P | Fresh 226.7 MB win32 depot. Native Play launched the PE32 target, which exited with Wine status 3 before a visible surface; no native Stop event was needed and cleanup was clean. Steam evaluated the `profiles.bin` rule but found no matching file. This matches the Human Resource Machine status-3 boundary. |
+| 282800 | 100% Orange Juice | P | P | I; overlay observed | P (`gameinstall`; upload and download proven) | P | Fresh 2.17 GB x64 depot. The title screen rendered in a window-specific capture, while native Steam attached `gameoverlayui`; three native Stop cycles returned cleanly. Native Cloud uploaded generated profiles and `last_save.ojs`, then downloaded the missing save and sidecar back into the mapped root with exact byte restoration. No visible overlay interaction or shipped-game API call is claimed. |
 | 1144770 | SLUDGE LIFE | P | P | I; overlay observed | I (`gameinstall` mapping; no save round trip) | P | Fresh Windows-only x64 Unity depot. Native Play rendered the game's full-screen first-run LOGIN surface and entered Running; native Stop returned cleanly to Play. The first-run gate prevented a gameplay or shipped-game Steamworks acceptance result. |
 | 397950 | Clustertruck | P | F | I | not configured (`hidecloudui=1`) | P | Native Play reached the rendered Unity configuration window but no game scene; native Stop returned cleanly with no selected-prefix Wine processes. This remains a title/launcher runtime boundary. |
 | 219150 | Hotline Miami | P | F | I | I (`WinMyDocuments` mapping; no save round trip) | P | Native Play launched the 32-bit Windows launcher surface, but its handoff produced no game surface. Direct explicit-entry trials with `HotlineMiami_Original.exe` and `HotlineGL.exe` also failed to render; the OpenGL trial exited with status 53. Native Stop returned the launcher and original-binary attempts to Play with no selected-prefix Wine processes. This remains a title/runtime boundary, not an Ullage mapping or supervision failure. |
@@ -285,6 +286,20 @@ transfer claim is made. Steam uninstalled the depot with `No Error` and Ullage
 removed the mapping. The status-3 result matches the existing Human Resource
 Machine boundary, so no per-title workaround or Ullage source change is
 justified.
+
+100% Orange Juice (AppID `282800`) supplied the strongest current x64 Cloud
+control. The fresh 2.17 GB depot contained a PE32+ `100orange.exe` target; the
+current package rendered its title screen, native Steam attached
+`gameoverlayui`, and three confirmed native Stop cycles returned to Play with
+clean prefixes. Native Cloud uploaded the generated `profile0.ojs`,
+`profile1.ojs`, `profile2.ojs`, and later `last_save.ojs` files plus the
+FAT32-generated AppleDouble sidecars. Moving only the newly generated
+`last_save.ojs` out of the mapped tree made native Steam download both the
+logical save and sidecar back successfully, restoring the exact 17-byte save.
+The title window was offset behind other macOS apps, so a window-specific
+capture was required; no visible overlay interaction or shipped-game API call
+is claimed. Steam uninstalled the depot with `No Error`, Ullage removed the
+mapping, and the generated residue was moved to recoverable Trash.
 
 SPY Fox in: Cheese Chase (AppID `292280`) supplied a current win32 install,
 mapping, native Play, and process-level overlay control with the unchanged

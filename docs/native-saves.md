@@ -81,6 +81,14 @@ The following behavior is covered by tests or real runs:
   the `profiles.bin` rule, but the fresh run created no matching file and Steam
   watched zero files. No Cloud transfer or save round trip is claimed; Steam
   uninstall and Ullage removal cleaned up the disposable install.
+* 100% Orange Juice exercised a current win64 `gameinstall` mapping on the
+  public package. Native Steam uploaded the generated `profile0.ojs`,
+  `profile1.ojs`, `profile2.ojs`, and later `last_save.ojs` files together
+  with FAT32 AppleDouble sidecars. Moving the newly generated `last_save.ojs`
+  out of the mapped tree caused native Steam to download the logical save and
+  sidecar back successfully; the downloaded 17-byte save matched its backup
+  exactly. A local profile divergence was classified as a local change and
+  was restored before exit, so no conflict-resolution claim is made.
 * Current-package disposable Cloud probes did not claim a transfer. Gravity
   Circuit's empty `WinAppDataRoaming` tree had a unique `.sav` fixture, but
   native launch watched zero files and the fullscreen client-exit fallback

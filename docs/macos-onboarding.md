@@ -985,3 +985,29 @@ documented Human Resource Machine status-3 boundary, not a missing mapping,
 cleanup, or generalized Ullage failure. No title-specific workaround or
 source change is justified until a Windows-specific control survives the same
 boundary.
+
+### 29. An x64 game can render in a window offset from the native Steam capture
+
+100% Orange Juice (AppID `282800`) was a fresh 2.17 GB external-library
+control using the current public package `2026.08.26-3`. `ullagectl plan`
+identified the real PE32+ `100orange.exe` x64 entry and disabled the absent
+`100orange_x86.exe` catalog entry without a manual override. Native Play
+launched the game through the preserved Steam transport; the title log
+recorded successful display/OpenGL/SDL initialization, a created window, and
+title initialization. The native Steam Helper and full desktop capture
+remained on the Steam library page because the Wine game window was offset
+behind other macOS apps. A window-specific capture of
+`100% Orange Juice! 3.29.2 ~ Extreme Alteration ~` showed the rendered title
+screen, so renderer initialization is proven but gameplay/input and visible
+overlay interaction are not claimed.
+
+Native Cloud first uploaded the generated profile files and AppleDouble
+sidecars. A reversible local divergence was classified as a local change
+rather than silently overwritten; after restoring the exact original
+`profile0.ojs`, moving the generated `last_save.ojs` out of the mapped tree
+made native Steam download both the logical save and sidecar successfully.
+The downloaded 17-byte save matched its backup exactly, and all three native
+Stop cycles returned to Play with `wine_exit=137` and clean prefixes. Steam
+uninstalled the depot with `No Error`, Ullage removed the mapping, and the 960
+KB generated residue was moved to recoverable Trash. No source or runtime
+change is justified.
