@@ -113,17 +113,17 @@ also remained healthy after the change.
 
 | Feature | Current evidence | Status |
 | --- | --- | :---: |
-| `SteamAPI_Init` | Katamari's 32-bit and 64-bit API DLLs both initialized; the x64 run required the canonical-name forwarder staged at the prefix Steam path | P (win32 + win64) |
-| Identity (`ISteamUser::GetSteamID`) | Direct probes returned a logged-on, nonzero SteamID on both architectures | P (win32 + win64 probe) |
-| Ownership/DRM | Direct probes returned subscribed and subscribed-to-AppID; a DRM-wrapper title is not certified | P (win32 + win64 probe); pending (DRM wrapper) |
-| Achievements/stats | Katamari's x64 probe requested current stats and enumerated 21 achievements, including state for the first entry; no controlled unlock/store/relaunch test is complete | P (read-only); pending (write path) |
-| DLC | Katamari's x64 probe called DLC enumeration and returned count 0; no DLC-content launch has been completed | P (enumeration); pending (content) |
-| Overlay | Direct probe reported `IsOverlayEnabled=0` for Katamari; visible overlay attachment was observed with Geometry Wars, Peggle, and Sonic Mania renderer paths | P (title/renderer-specific) |
+| `SteamAPI_Init` | Gravity Circuit's current x64 copied-DLL probe initialized through the packaged runtime with the native Steam client running; the x64 path still uses the canonical-name forwarder staged at the prefix Steam path | P (win32 + current win64 probe) |
+| Identity (`ISteamUser::GetSteamID`) | The current Gravity Circuit probe returned logged-on SteamID `76561198352563669`; earlier probes returned a logged-on, nonzero SteamID on both architectures | P (win32 + current win64 probe) |
+| Ownership/DRM | The current Gravity Circuit probe returned `subscribed=1` and `subscribed_app=1`; a DRM-wrapper title is not certified | P (win32 + current win64 probe); pending (DRM wrapper) |
+| Achievements/stats | The current Gravity Circuit probe requested current stats and enumerated 53 achievements, including state for the first entry; no controlled unlock/store/relaunch test is complete | P (read-only); pending (write path) |
+| DLC | The current Gravity Circuit probe called DLC enumeration and returned count 0; no DLC-content launch has been completed | P (enumeration); pending (content) |
+| Overlay | The detached Gravity Circuit probe reported `IsOverlayEnabled=0`; visible `gameoverlayui` attachment was observed during native renderer paths, including Gravity Circuit and EXAPUNKS | P (title/renderer-specific) |
 | Playtime | Native Steam updates local playtime and App Running/App stopped transitions after bridge runs | P (client telemetry) |
 | Steam Stop | Native Steam emitted `App Running,Terminating`; the bridge routed it through its signal trap, reaped the selected prefix, and returned Peggle and Katamari to Play with no Wine/helper processes remaining | P |
-| Shutdown/relaunch | Direct x64 probe reached `SteamAPI_Shutdown`; native Play/Stop runs also returned Katamari to Play with no selected-prefix Wine processes remaining | P (win32 + win64/boundary) |
+| Shutdown/relaunch | The current Gravity Circuit probe reached `SteamAPI_Shutdown`; native Play/Stop runs also returned known titles to Play with no selected-prefix Wine processes remaining | P (win32 + win64/boundary) |
 
-The next feature tests should use one known-visible title for the controlled
+Remaining feature tests should use one known-visible title for the controlled
 Steamworks probe and one Cloud title. The probe must record API-level results
 without modifying the game depot; a diagnostic executable or a separately
 staged Steamworks sample is preferable to instrumenting shipped game files.
@@ -178,10 +178,10 @@ that the public package passed the x64 feature probe.
 The same package was independently exercised with the documented Stellar Mess
 win32 control. Native Play reached Running, the native Stop confirmation
 returned to Play, and the receipt recorded `native_stop_observed=true`,
-`wine_exit=137`, and a clean prefix. The current run therefore proves package
-transport and supervision on this Mac; the x64 Steamworks feature rows above
-remain the prior direct-probe evidence until a current x64 title completes the
-probe and renderer paths.
+`wine_exit=137`, and a clean prefix. A current x64 diagnostic probe now adds
+read-only API evidence, but it was a separately staged executable using an
+unmodified copy of Gravity Circuit's `steam_api64.dll`; it does not certify
+that the shipped game called those interfaces during its native Play session.
 
 The package was also repeated with TIS-100 as a small win32 control. Native
 Steam reached Running and returned to Play after the Stop confirmation; the
@@ -190,6 +190,25 @@ receipt at `~/.ullage/sessions/370360/last.json` recorded `wine_exit=137`,
 Out of Date` before launch, and the full-display capture was occluded by the
 Codex window, so this run adds lifecycle evidence but no new Cloud or renderer
 claim.
+
+The current Gravity Circuit x64 probe ran on 2026-08-27 with the unchanged
+public package `2026.08.26-3` and an unmodified copy of the depot's
+`steam_api64.dll`. It returned `steam_api_load=1`, `steam_api_init=1`, a
+matching AppID (`858710`), logged-on identity, subscription/ownership,
+`dlc_count=0`, `request_current_stats=1`, `achievement_count=53`, and
+`steam_api_shutdown=1`. The bridge receipt ended with `wine_exit=0` and a
+clean prefix. This is intentionally a diagnostic API result, not a modified
+depot or shipped-game trace. Its `overlay_enabled=0` result is kept separate
+from the visible `gameoverlayui` process observed in native game runs; the
+probe itself was not a visible overlay interaction test.
+
+EXAPUNKS (AppID `716490`) supplied a current Cloud/lifecycle near-miss with
+the same package. The healthy `gameinstall` mapping was installed, Steam's
+content log showed `SynchronizingCloud` before launch, and `gameoverlayui`
+attached to the x64 Wine process. The title remained on its loading surface,
+so no renderer pass is claimed. Quitting Steam exercised the generic client
+exit fallback and left a clean prefix, but the client exited before a normal
+Cloud exit evaluation; no changed-file upload or round-trip claim is made.
 
 ## Stop and cleanup boundary
 

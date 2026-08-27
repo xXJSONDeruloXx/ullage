@@ -51,6 +51,12 @@ The following behavior is covered by tests or real runs:
 * Gravity Circuit exercised a nested x64 depot with `WinAppDataRoaming`; the
   native page showed the checked Cloud state and the mapping was restored after
   the depot was uninstalled. No game save was created during that run.
+* EXAPUNKS exercised a nested x64 depot with a `gameinstall` root on the current
+  public package. The native mapper installed the healthy game-install link and
+  Steam logged `SynchronizingCloud` before launch. The existing `save.dat` was
+  preserved, but the title stayed on its loading surface and the native client
+  was quit before Cloud exit evaluation, so no changed-file upload or round
+  trip is claimed.
 * A stale local Steam Cloud cache can seed a missing prefix file once when the
   file satisfies the current UFS pattern and size/SHA-1 check. Existing prefix
   files are never overwritten by that seed path.

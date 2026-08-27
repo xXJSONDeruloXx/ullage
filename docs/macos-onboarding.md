@@ -796,3 +796,24 @@ inspection confirmed that the bridge, Gravity Circuit, Wine helpers, and
 Steam were gone afterward. This is a generic shutdown fallback, not a
 title-specific kill or a replacement for the ordinary native Steam Stop
 flow; `ipcserver` is intentionally not used as the client-aliveness signal.
+
+### 20. Current Steamworks and Cloud probe boundaries
+
+The current x64 diagnostic probe passed through the public package on
+2026-08-27 using an unmodified copy of Gravity Circuit's `steam_api64.dll`.
+It initialized Steam, matched AppID `858710`, returned the logged-on identity
+and ownership flags, enumerated 53 achievements and zero DLC, requested stats,
+and shut down cleanly. This is useful API-level evidence, but it is a staged
+probe rather than a trace from the shipped game process. Its
+`IsOverlayEnabled=0` result must not override the separate native-run evidence
+that `gameoverlayui` attached to visible game processes.
+
+Two onboarding boundaries remain easy to misread. `SteamAPI_IsSteamRunning=1`
+can outlive the actual `steam_osx` client when only stale IPC state remains, so
+probe setup should verify the native client process separately. Also, the
+Steam Helper screenshot can become black or occluded when a fullscreen Wine
+game owns the frontmost surface; use fresh screenshots after each action and
+the bridge/Steam logs for lifecycle evidence. The current EXAPUNKS run showed
+the native Cloud synchronization start and a healthy `gameinstall` mapping,
+then stayed on its loading surface; quitting Steam used the client-exit
+fallback cleanly, but no Cloud upload was inferred.
