@@ -900,3 +900,26 @@ The original depot config was restored byte-for-byte afterward. This remains a
 title/config boundary, not an Ullage workaround: the current package installed,
 mapped, launched, and cleaned up correctly, but the original title settings did
 not produce a renderer pass and no Cloud round trip was claimed.
+
+### 24. Steam may gate a small install behind an app EULA
+
+Sonic Mania (AppID `584400`) looked like a suitable 202 MB external-library
+Cloud control, but Steam opened its EULA before starting the download. The
+PAC-MAN entry in ARCADE GAME SERIES (AppID `394160`) showed the same behavior
+after its delayed install dialog appeared; its dialog reported 781.89 MB.
+Because accepting either agreement is a user legal action, both prompts were
+canceled. No depot download, manifest, or Ullage mapping was created for
+either title, and no code or runtime change is indicated. A future test of
+these titles needs the account owner to accept the EULA interactively before
+Steam will begin installation.
+
+### 25. Fullscreen occlusion limits Cloud exit checks
+
+The current-package Gravity Circuit and EXAPUNKS controls both launched
+through native Steam and reached the expected bridge boundary. Their fullscreen
+surfaces made the Steam Helper screenshot black, so the documented Computer Use
+target could not reach native Stop. Steam client exit exercised Ullage's generic
+fallback and left clean prefixes, but it ended the app before the native Cloud
+exit evaluation that would have tested the disposable changed-file fixtures.
+These runs are recorded as lifecycle/transport evidence only; they do not
+justify a Cloud implementation change or a game-specific workaround.

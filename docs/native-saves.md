@@ -75,6 +75,13 @@ The following behavior is covered by tests or real runs:
   round trip was attempted. Steam uninstall and Ullage removal removed the
   mapping and owned link while preserving the residual `Saves` directory as
   user data.
+* Current-package disposable Cloud probes did not claim a transfer. Gravity
+  Circuit's empty `WinAppDataRoaming` tree had a unique `.sav` fixture, but
+  native launch watched zero files and the fullscreen client-exit fallback
+  ended before Cloud exit evaluation. EXAPUNKS watched its existing
+  `save.dat`, but a unique `.solution` fixture likewise never reached a
+  normal exit evaluation. Both fixtures were removed without changing the
+  existing save data.
 * A stale local Steam Cloud cache can seed a missing prefix file once when the
   file satisfies the current UFS pattern and size/SHA-1 check. Existing prefix
   files are never overwritten by that seed path.

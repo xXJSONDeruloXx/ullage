@@ -272,6 +272,16 @@ exercised the generic fallback and left a clean prefix. Steam uninstalled the
 depot with `No Error`, Ullage removed the mapping, and no Cloud round trip is
 claimed because no save was modified.
 
+The current-package Cloud fixture checks also exposed a test-harness boundary,
+not a mapper defect. Gravity Circuit's mapped `WinAppDataRoaming` tree was
+empty; a unique `.sav` fixture was present before native Play, but Steam's
+launch pass watched zero files and the fullscreen client-exit fallback ended
+the run before a Cloud exit evaluation. EXAPUNKS provided the complementary
+control: native Steam watched its existing `save.dat`, while a unique
+`.solution` fixture was left for exit evaluation; fullscreen occlusion again
+required the client-exit fallback before that evaluation. Both fixtures were
+removed afterward, and neither run is counted as upload or round-trip evidence.
+
 The current Gravity Circuit x64 probe ran on 2026-08-27 with the unchanged
 public package `2026.08.26-3` and an unmodified copy of the depot's
 `steam_api64.dll`. It returned `steam_api_load=1`, `steam_api_init=1`, a
