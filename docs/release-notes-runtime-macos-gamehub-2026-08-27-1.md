@@ -7,7 +7,7 @@ GPTK 3.0-3.
 
 Included in this release:
 
-* `ullage-gamehub-wine-proton-11.0_0728.tar.zst` — the original clean GameHub
+* `wine-proton_11.0_0728.tar.zst` — the original clean GameHub
   Wine archive, uploaded byte-for-byte and verified against SHA-256
   `e72b9016c1732955dc5b24a93e8c11e5611b9454e8e7cf1a04a68f1dd3f06fd0`.
 * `host-releases.json` — the Ullage lock containing the Wine and GPTK source

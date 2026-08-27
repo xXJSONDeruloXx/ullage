@@ -8,8 +8,8 @@
       "version": "gamehub-wine-proton-11.0-gptk-3.0-3",
       "provider": "gamehub",
       "wine": {
-        "asset": "ullage-gamehub-wine-proton-11.0_0728.tar.zst",
-        "url": "https://github.com/xXJSONDeruloXx/ullage-patches/releases/download/runtime-macos-gamehub-2026-08-27-1/ullage-gamehub-wine-proton-11.0_0728.tar.zst",
+        "asset": "wine-proton_11.0_0728.tar.zst",
+        "url": "https://github.com/xXJSONDeruloXx/ullage-patches/releases/download/runtime-macos-gamehub-2026-08-27-1/wine-proton_11.0_0728.tar.zst",
         "sha256": "e72b9016c1732955dc5b24a93e8c11e5611b9454e8e7cf1a04a68f1dd3f06fd0",
         "archive_size": 438382677,
         "source_url": "https://gamehub-cdn.youwo.com/uploads/emulator/20260729/5079412146d848948144147aff8fe24c.zst",
