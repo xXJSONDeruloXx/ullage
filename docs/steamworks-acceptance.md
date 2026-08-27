@@ -219,6 +219,19 @@ prefix. Steam then uninstalled the depot with `No Error`, Ullage removed the
 mapping and launch state, and the small residual test directory was moved to
 the macOS Trash; the appinfo backups remain available for provenance.
 
+A current-package repeat with the existing Peggle Deluxe install (AppID
+`3480`) supplied a second win32 transport control without another download.
+Native Play launched the mapped `peggle.exe` and PopCap child, the fullscreen
+surface rendered its loading screen, and `gameoverlayui -gameid 3480` attached.
+The title remained on that screen for roughly one minute at high child CPU,
+so no full-menu renderer pass is claimed. Fullscreen occlusion prevented a
+fresh native Stop click; quitting Steam exercised the generic client-exit
+fallback. The receipt recorded `steam_client_exit_observed=true`, one reaped
+game process, eight reaped helpers, `wine_exit=137`, and a clean prefix. The
+existing depot was preserved and Ullage restored the original Steam launch
+entry after the run; no Cloud claim applies because the title has no
+supported Windows root.
+
 The current Gravity Circuit x64 probe ran on 2026-08-27 with the unchanged
 public package `2026.08.26-3` and an unmodified copy of the depot's
 `steam_api64.dll`. It returned `steam_api_load=1`, `steam_api_init=1`, a

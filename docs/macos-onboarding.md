@@ -828,3 +828,9 @@ at 1% while preallocating 2.155 GB at roughly 1 MB/s, so the queued download
 was paused and uninstalled as a bounded check rather than treated as a small
 test. Steam removed the manifest and staging area with `No Error`, and no
 Portal 2 row was added to the acceptance matrix.
+The current-package Peggle repeat found a separate title boundary: the
+existing win32 depot launched with x86 lsteamclient and `gameoverlayui`, but
+its fullscreen surface stayed on the loading screen for about one minute at
+high child CPU. The generic Steam-client exit fallback eventually reaped the
+game and helpers cleanly; Ullage then restored the original launch entry and
+left the user's depot installed.
