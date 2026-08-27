@@ -881,3 +881,22 @@ gameinstall root and the sidecars are produced by the host filesystem. For
 future Cloud-bearing tests, prefer an APFS library when possible or record and
 clean these recoverable sidecars deliberately; do not silently claim a clean
 save round trip from this pattern alone.
+
+### 23. Legacy ScummVM title configs can block first-run rendering
+
+SPY Fox in: Cheese Chase (AppID `292280`) exposed a title-owned legacy ScummVM
+setup boundary on the current GameHub Wine container. Its bundled ScummVM 2.1.0
+config requested the invalid `gfx_mode=opengl_nearest`, left the first-run
+`updates_check` dialog enabled, and selected the unavailable
+`windows_Microsoft GS Wavetable Synth` device. The alternate `-c` title config
+also meant that setting the updater value only in ScummVM's global config did
+not suppress the prompt.
+
+The native Steam Helper cannot expose controls inside a fullscreen Wine window,
+so the prompt could not be dismissed reliably through the documented Computer
+Use path. A reversible test-only config using `gfx_mode=1x`, `updates_check=0`,
+and `music_driver=auto` reached a visible scene and attached `gameoverlayui`.
+The original depot config was restored byte-for-byte afterward. This remains a
+title/config boundary, not an Ullage workaround: the current package installed,
+mapped, launched, and cleaned up correctly, but the original title settings did
+not produce a renderer pass and no Cloud round trip was claimed.

@@ -70,6 +70,11 @@ The following behavior is covered by tests or real runs:
   successful native Cloud transfer evidence, but not a changed-save round trip;
   the sidecars are a host-filesystem artifact to account for when testing
   `gameinstall` roots on non-APFS volumes.
+* SPY Fox in: Cheese Chase exercised a current win32 `gameinstall` mapping on
+  the public package; the native Cloud link was healthy, but no modified save
+  round trip was attempted. Steam uninstall and Ullage removal removed the
+  mapping and owned link while preserving the residual `Saves` directory as
+  user data.
 * A stale local Steam Cloud cache can seed a missing prefix file once when the
   file satisfies the current UFS pattern and size/SHA-1 check. Existing prefix
   files are never overwritten by that seed path.

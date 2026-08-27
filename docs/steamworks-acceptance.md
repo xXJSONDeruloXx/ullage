@@ -259,6 +259,19 @@ the sidecar behavior is recorded as a host-filesystem boundary. Steam
 uninstalled the depot with `No Error`, preserving the small save/config
 directory, and Ullage removed the mapping cleanly.
 
+SPY Fox in: Cheese Chase (AppID `292280`) supplied a current win32 install,
+mapping, native Play, and process-level overlay control with the unchanged
+public package. The bundled ScummVM 2.1.0 config requested an invalid renderer
+mode for this host, left the first-run updater enabled, and selected an
+unavailable Windows MIDI device; the original run therefore remained at the
+fullscreen setup surface. A reversible test-only config using `gfx_mode=1x`,
+`updates_check=0`, and `music_driver=auto` reached a visible scene and was
+followed by exact restoration of the depot config. The Steam Helper could not
+expose controls inside the fullscreen Wine window, so Steam client exit
+exercised the generic fallback and left a clean prefix. Steam uninstalled the
+depot with `No Error`, Ullage removed the mapping, and no Cloud round trip is
+claimed because no save was modified.
+
 The current Gravity Circuit x64 probe ran on 2026-08-27 with the unchanged
 public package `2026.08.26-3` and an unmodified copy of the depot's
 `steam_api64.dll`. It returned `steam_api_load=1`, `steam_api_init=1`, a
