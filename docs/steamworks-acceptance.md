@@ -46,6 +46,7 @@ the acceptance criterion.
 | 356400 | Thumper | P | F | I | P (`gameinstall`) | P | Fresh multi-option retest redirected all four installed Windows entries; default and DX9 reached their selected executables, the Steam VR option preserved `-openvr`, and native Stop returned each tested path cleanly. Wine's `Application load error 3:0000065432` remained a runtime/title renderer boundary. |
 | 990630 | The Last Campfire | P | F | I | P (native mapping installed) | P | Fresh Play-button run reached Wine and exited 0 without a visible surface. |
 | 1880620 | Once Upon A KATAMARI | P | F | I | I (mapping installed; no save round trip) | P | Native Play reached Running twice, but Wine reported `Application load error 3:0000065432` before the Unity game assembly or game Steam API DLL loaded. A separate staged API probe passed initialization, identity, ownership, and DLC enumeration; that does not certify the shipped game session. |
+| 2492670 | METAL GEAR SOLID 4: Guns of the Patriots - Master Collection Version | P | F | P (direct probe only) | I (`gameinstall` available; no round trip) | P | Native Play reached `Launcher/launcher.exe`, which displayed its own `Application load error 3:0000065432` before `mgs4.exe`. Relay tracing showed the legacy SteamStart shared objects were absent; the separately staged game API probe passed initialization, identity, ownership, and DLC enumeration, but does not certify the shipped game session. |
 | 858710 | Gravity Circuit | P | P | I | I (mapping and checked badge; no save round trip) | P | Fresh nested x64 depot rendered its language-selection surface with the native overlay attached. Two native Play/Stop cycles returned to Play; the shipped game was not instrumented for API-level feature calls. |
 | 4182710 | Dustin Sunset | P | P | I | not configured | P | Fresh flat x64 Unity depot rendered the title surface with `gameoverlayui` attached. Two native Play/confirmed-Stop cycles returned to Play; no shipped-game Steamworks feature calls or Cloud roots were exercised. |
 | 403400 | ARCADE GAME SERIES: DIG DUG | P | P | I | I (mapping and checked badge; no save round trip) | P | Fresh Windows-only x64 Unity depot rendered its auto-save caution surface with `gameoverlayui` attached. Native Stop returned to Play and Steam uninstall plus Ullage removal completed cleanly; the shipped game's Steamworks feature calls were not instrumented. |
@@ -479,6 +480,21 @@ clean prefix. This is intentionally a diagnostic API result, not a modified
 depot or shipped-game trace. Its `overlay_enabled=0` result is kept separate
 from the visible `gameoverlayui` process observed in native game runs; the
 probe itself was not a visible overlay interaction test.
+
+METAL GEAR SOLID 4 (AppID `2492670`) supplied a current title-level DRM
+boundary. Steam completed the 24.5 GB Windows depot update and native Play
+reached `Launcher/launcher.exe`, but the launcher displayed
+`Application load error 3:0000065432` before starting `mgs4.exe`. Relay
+tracing showed failed opens of `Local\\SteamStart_SharedMemLock` and
+`Local\\SteamStart_SharedMemFile`. A read-only probe found the same objects
+absent during GameHub's SteamAgent launch. A separately staged, unmodified
+copy of the game's `steam_api64.dll` initialized successfully and returned
+matching identity, subscription, and DLC results; that is direct probe
+evidence, not shipped-game-session evidence. A disposable prefix with the
+full stock Valve Steam client DLL set loaded those DLLs but had no authenticated
+session and could not start its Steam service. No executable patching or
+third-party DRM binary was used, and native Stop/diagnostic termination left
+the selected prefix clean.
 
 EXAPUNKS (AppID `716490`) supplied a current Cloud/lifecycle near-miss with
 the same package. The healthy `gameinstall` mapping was installed, Steam's
