@@ -1090,3 +1090,23 @@ Native Stop returned to Play with a clean prefix, and Steam uninstall plus
 Ullage removal completed without residue. For Unity titles, classify a black
 early capture only after checking whether the window changes and the process
 continues to initialize; do not add a renderer workaround from the first frame.
+
+### 35. A small GameMaker title can reproduce the existing graphics boundary
+
+Cold Silence (AppID `1003830`) supplied a fresh 52.93 MB x64 external-library
+control using the current public package `2026.08.26-3`. The first Play attempt
+before Ullage mapping correctly failed with Steam's `OS Error 0`; installing
+the generated mapping and restarting native Steam reached the actual Wine
+process. The title then showed a Wine-owned GameMaker
+`CheckMultisampleQualityLevels` dialog with `HRESULT 0x80070057` before a
+usable surface. `lsof` confirmed the x64 lsteamclient sidecar, Steam loader,
+and overlay renderer were loaded, so this is a title-side renderer boundary,
+not an onboarding or bridge-package omission.
+
+The supported `WinAppDataLocal` Cloud rule evaluated with zero watched files.
+Native Stop returned Steam to Play with `wine_exit=137` and a clean prefix;
+Steam uninstalled the depot with `No Error`, and Ullage removed the mapping
+after native Steam quit. The practical onboarding lesson is to install and
+restart Steam before pressing Play after patching appinfo, then classify this
+GameMaker error with the existing renderer failures rather than adding a
+per-title workaround.
