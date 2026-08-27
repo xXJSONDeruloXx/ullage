@@ -1110,3 +1110,23 @@ after native Steam quit. The practical onboarding lesson is to install and
 restart Steam before pressing Play after patching appinfo, then classify this
 GameMaker error with the existing renderer failures rather than adding a
 per-title workaround.
+
+### 36. Small legacy titles may expose a configuration dialog before the game
+
+Beyond Minimalism (AppID `861320`) supplied a fresh 51.01 MB win32
+external-library control using the current public package `2026.08.26-3`.
+The Steam Helper's visible CEF `INSTALL` button did not trigger its native
+install modal through the computer-use coordinate path; the native
+`steam://install/861320` URI opened the same modal and completed the download.
+That is a host automation boundary, not a reason to add a second Ullage
+installer.
+
+After `ullagectl install` and a native Steam restart, Play reached the title's
+`BeyondMinimalism Configuration` dialog. The rotated display and incomplete
+macOS input path made a scoped in-prefix Windows `BM_CLICK` probe necessary to
+activate the dialog's own `Play!` control. The game then rendered its title
+screen, loaded x86 lsteamclient and `gameoverlayui`, and passed native Stop
+with `wine_exit=137` and a clean prefix. Steam uninstall returned `No Error`
+and Ullage removed the mapping after Steam quit. The lesson is to distinguish
+title-owned first-run UI/input from Ullage mapping failures and keep such
+probes test-only.
