@@ -189,9 +189,10 @@ require native Steam to be stopped.
 After a bridge run, Ullage writes a structured receipt at
 `~/.ullage/sessions/APPID/last.json`. `inspect` and `diagnose` expose that
 receipt along with residual-process checks and a log path. The receipt records
-the AppID, entry, architecture, runtime, stop observation, Wine exit, signal,
-reaped helper/game counts, and prefix cleanliness. The text log remains for
-human debugging; callers should use the receipt fields.
+the AppID, entry, architecture, runtime, native Stop and native Steam-client
+exit observations, Wine exit, signal, reaped helper/game counts, and prefix
+cleanliness. The text log remains for human debugging; callers should use the
+receipt fields.
 
 The facade deliberately does not expose the optional Steamworks probe as a
 green compatibility verdict until its ABI declarations and JSON output are

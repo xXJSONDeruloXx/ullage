@@ -206,6 +206,15 @@ Katamari: both exited with `wine_exit=143 signal_received=1`, Steam returned to
 the normal Play state, and process inspection found no game, Wine server, or
 prefix-owned helper left behind.
 
+A separate current x64 Gravity Circuit run exercised the native-client exit
+boundary. Quitting Steam while the game was active caused the native waiting
+dialog, then the client exited; Ullage's exact `steam_osx` watcher observed the
+exit and routed it through the same signal/reaper path. The receipt recorded
+`steam_client_exit_observed=true`, `native_stop_observed=false`,
+`wine_exit=137`, and `prefix_clean=true`, with no selected-prefix processes
+remaining. This validates cleanup after client shutdown; it is not a new
+Steamworks feature or a substitute for the AppID-scoped native Stop event.
+
 ## Cloud interpretation
 
 The focused native-save evidence ledger, including the supported root table

@@ -778,3 +778,21 @@ run does not add a new Cloud round-trip claim. The full-display capture was
 occluded by the Codex window; the prior TIS-100 rendered-surface evidence
 remains the renderer pass, while this repetition is transport/Stop evidence
 only.
+
+### 19. Native Steam client exit fallback
+
+The native Stop path and native Steam-client shutdown are separate lifecycle
+events. During a current Gravity Circuit x64 run using the unchanged public
+package `2026.08.26-3`, quitting Steam while the game was active displayed
+Steam's `Waiting for Gravity Circuit to shut down...` dialog. Steam then exited
+without emitting the AppID-scoped Stop event. Ullage commit `f3f2bf1` watched the
+exact incumbent `steam_osx` process for this launch, routed the client exit
+through the existing bridge signal path, and ran the prefix-scoped reaper.
+
+The resulting receipt at `~/.ullage/sessions/858710/last.json` recorded
+`native_stop_observed=false`, `steam_client_exit_observed=true`,
+`signal_received=true`, `wine_exit=137`, and `prefix_clean=true`. Process
+inspection confirmed that the bridge, Gravity Circuit, Wine helpers, and
+Steam were gone afterward. This is a generic shutdown fallback, not a
+title-specific kill or a replacement for the ordinary native Steam Stop
+flow; `ipcserver` is intentionally not used as the client-aliveness signal.
