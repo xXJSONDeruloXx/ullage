@@ -759,3 +759,11 @@ termination event, returned the page to Play, and the receipt recorded
 covered by the bridge environment regression and the full `make check` suite;
 the runtime package was deliberately not republished because no artifact
 changed.
+
+The post-fix x64 retest kept the boundary distinction explicit. Megabonk
+rendered its default DX11 menu and completed native Stop cleanup. Katamari
+remained alive long enough to load its Unity crash handler and completed the
+same native Stop cleanup, but the available capture was black, so it remains
+an x64 renderer near-miss rather than a pass. The unchanged package also
+continued to pass the Stellar Mess win32 transport/Stop control. These runs
+did not change the runtime artifacts or justify a new `ullage-patches` release.

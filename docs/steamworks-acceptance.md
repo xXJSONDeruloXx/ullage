@@ -102,8 +102,12 @@ claims transport evidence rather than a visible overlay interaction. Native
 Stop returned Steam to Play, the bridge recorded `wine_exit=137`, and the
 session receipt reported a clean prefix. This is a bridge-wide x64 launch
 regression fix, not a Gravity Circuit workaround; current Katamari and
-Megabonk public-package failures remain historical pre-fix rows until they
-are rerun.
+Megabonk public-package failures remain preserved as pre-fix rows above.
+Post-fix Megabonk rendered its default DX11 menu and completed native Stop
+cleanup. Post-fix Katamari crossed the former status-5 boundary and completed
+native Stop cleanup, but its available desktop capture remained black, so no
+current Katamari renderer pass is claimed. The 32-bit Stellar Mess control
+also remained healthy after the change.
 
 ## Feature-level matrix
 

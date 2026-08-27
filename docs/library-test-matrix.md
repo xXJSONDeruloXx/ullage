@@ -185,6 +185,9 @@ and the fixed result remain auditable.
 | AppID | Title | Arch | Launch | Renderer | Native Stop | Cleanup | Notes |
 | ---: | --- | :---: | :---: | :---: | :---: | :---: | --- |
 | 858710 | Gravity Circuit | win64 | P | P | P | P | The pre-fix package-root ordering reproduced Wine status 5 and the `0xBEEF` lsteamclient crash. With package-root-first `WINEDLLPATH` and direct Wine environment passing, the language-selection surface rendered; native Stop returned Steam to Play and the receipt recorded `wine_exit=137` with a clean prefix. |
+| 848350 | Katamari Damacy REROLL | win64 | P | F | P | P | The fixed bridge no longer reproduced the status-5 crash: the process remained alive with the x64 bridge, overlay transport, and Unity crash handler loaded. The available desktop capture remained black, while native Stop returned Steam to Play and reaped eight helpers with a clean prefix. |
+| 3520070 | Megabonk Demo | win64 | P | P | P | P | The fixed bridge rendered the default DX11 menu through the x64 forwarder and native Steam transport. The desktop capture showed the game surface beneath the Steam window; native Stop returned Steam to Play and reaped seven helpers with a clean prefix. |
+| 1507530 | Stellar Mess: The Princess Conundrum (Chapter 1) | win32 | P | I | P | P | The 32-bit control remained healthy after the x64 loader-order change: native Play reached Running, the packaged bridge and overlay transport were logged, and native Stop returned Steam to Play with a clean prefix. |
 
 ## Per-title evidence
 
