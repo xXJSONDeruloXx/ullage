@@ -183,6 +183,17 @@ grep -F 'wine_arch=win64' "$CASE_PREFIX/wine-events" >/dev/null
 grep -F "[ullage-bridge] dyld_insert_libraries=$direct_sandboxfs" "$CASE_LOG" >/dev/null
 grep -F "dllpath=$CASE_BRIDGE_ROOT:$TEMP_ROOT/direct-env/gptk/wine:$TEMP_ROOT/direct-env/wine/lib/wine" \
     "$CASE_PREFIX/wine-events" >/dev/null
+printf '%s\n' "PRESERVE_STEAM_TRANSPORT='1'" >>"$CASE_CONFIG"
+set +e
+FILE_CMD="$TEMP_ROOT/file64" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG"
+status=$?
+set -e
+[ "$status" -eq 7 ] || {
+    printf 'expected transport environment case exit 7, got %s\n' "$status" >&2
+    exit 1
+}
+grep -F "prefix_base=$direct_base" "$CASE_PREFIX/wine-events" >/dev/null
+grep -F 'wine_arch=win64' "$CASE_PREFIX/wine-events" >/dev/null
 
 make_case dllpath slow-exit
 mkdir "$CASE_PREFIX/override"
