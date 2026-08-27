@@ -89,6 +89,11 @@ The following behavior is covered by tests or real runs:
   sidecar back successfully; the downloaded 17-byte save matched its backup
   exactly. A local profile divergence was classified as a local change and
   was restored before exit, so no conflict-resolution claim is made.
+* ABI-DOS exercised a current win64 `WinAppDataLocal` mapping on the public
+  package. Native Steam evaluated the `ABI_DOS/*` rule after the title reached
+  its GameMaker graphics error, but found zero matching files and watched zero
+  files. The run therefore makes no Cloud transfer claim; Steam uninstall and
+  Ullage removal cleaned up the disposable install.
 * Current-package disposable Cloud probes did not claim a transfer. Gravity
   Circuit's empty `WinAppDataRoaming` tree had a unique `.sav` fixture, but
   native launch watched zero files and the fullscreen client-exit fallback

@@ -57,6 +57,7 @@ the acceptance criterion.
 | 2457890 | DRACOMATON | P | P | I; overlay observed | P (`gameinstall` mapped to `MacAppSupport`; two files downloaded and watched) | P | Fresh Windows/macOS Unity depot. Native Play and relaunch rendered the DRACOMATON menu with `gameoverlayui` attached. Native Cloud downloaded and watched `RunData.json` and `SaveData.json` through the owned `MacAppSupport` mapping; both exit evaluations found the files unchanged. Native Stop returned to Play and reaped the selected-prefix helper set. |
 | 792100 | 7 Billion Humans | P | F | I | I (`WinAppDataRoaming` mapping; zero watched files) | P | Fresh 226.7 MB win32 depot. Native Play launched the PE32 target, which exited with Wine status 3 before a visible surface; no native Stop event was needed and cleanup was clean. Steam evaluated the `profiles.bin` rule but found no matching file. This matches the Human Resource Machine status-3 boundary. |
 | 282800 | 100% Orange Juice | P | P | I; overlay observed | P (`gameinstall`; upload and download proven) | P | Fresh 2.17 GB x64 depot. The title screen rendered in a window-specific capture, while native Steam attached `gameoverlayui`; three native Stop cycles returned cleanly. Native Cloud uploaded generated profiles and `last_save.ojs`, then downloaded the missing save and sidecar back into the mapped root with exact byte restoration. No visible overlay interaction or shipped-game API call is claimed. |
+| 2180700 | ABI-DOS | P | F | I; x64 bridge and native Steam transport observed | I (`WinAppDataLocal` mapping; zero watched files) | P | Fresh 514.98 MB x64 GameMaker depot. Native Play reached Running, but Wine showed `CheckMultisampleQualityLevels` with `HRESULT 0x80070057` before a usable surface. Native Stop returned to Play with `wine_exit=137` and a clean prefix; Steam uninstall returned `No Error` and Ullage removed the mapping. |
 | 1144770 | SLUDGE LIFE | P | P | I; overlay observed | I (`gameinstall` mapping; no save round trip) | P | Fresh Windows-only x64 Unity depot. Native Play rendered the game's full-screen first-run LOGIN surface and entered Running; native Stop returned cleanly to Play. The first-run gate prevented a gameplay or shipped-game Steamworks acceptance result. |
 | 397950 | Clustertruck | P | F | I | not configured (`hidecloudui=1`) | P | Native Play reached the rendered Unity configuration window but no game scene; native Stop returned cleanly with no selected-prefix Wine processes. This remains a title/launcher runtime boundary. |
 | 219150 | Hotline Miami | P | F | I | I (`WinMyDocuments` mapping; no save round trip) | P | Native Play launched the 32-bit Windows launcher surface, but its handoff produced no game surface. Direct explicit-entry trials with `HotlineMiami_Original.exe` and `HotlineGL.exe` also failed to render; the OpenGL trial exited with status 53. Native Stop returned the launcher and original-binary attempts to Play with no selected-prefix Wine processes. This remains a title/runtime boundary, not an Ullage mapping or supervision failure. |
@@ -300,6 +301,16 @@ The title window was offset behind other macOS apps, so a window-specific
 capture was required; no visible overlay interaction or shipped-game API call
 is claimed. Steam uninstalled the depot with `No Error`, Ullage removed the
 mapping, and the generated residue was moved to recoverable Trash.
+
+ABI-DOS (AppID `2180700`) supplied a small current x64 GameMaker control with
+a `WinAppDataLocal` root. The fresh depot launched through the current
+package and native Steam, but Wine displayed the title's
+`CheckMultisampleQualityLevels` error with `HRESULT 0x80070057` before a usable
+surface. Native Cloud evaluated `ABI_DOS/*` and watched zero files rather than
+claiming a transfer. The native Stop event returned the page to Play with a
+clean prefix, and Steam uninstall plus Ullage removal completed with `No
+Error`. This repeats the existing GameMaker graphics boundary, so no
+title-specific workaround or Ullage source change is justified.
 
 SPY Fox in: Cheese Chase (AppID `292280`) supplied a current win32 install,
 mapping, native Play, and process-level overlay control with the unchanged

@@ -1011,3 +1011,22 @@ Stop cycles returned to Play with `wine_exit=137` and clean prefixes. Steam
 uninstalled the depot with `No Error`, Ullage removed the mapping, and the 960
 KB generated residue was moved to recoverable Trash. No source or runtime
 change is justified.
+
+### 30. GameMaker can reach the bridge but fail before creating a surface
+
+ABI-DOS (AppID `2180700`) was a fresh 514.98 MB external-library x64 control
+using the current public package `2026.08.26-3`. `ullagectl plan` identified
+the PE32+ `ABI-DOS.exe` entry and a healthy `WinAppDataLocal` mapping. Native
+Play reached Running through the preserved Steam transport, but the title
+showed a Wine-owned GameMaker error from
+`GR_D3D_Device->CheckMultisampleQualityLevels` with `HRESULT 0x80070057`
+before a usable game surface appeared. This is the same graphics boundary as
+the existing Dokimon, Castle Break, and Dreams of Aether controls; no
+title-specific workaround or Ullage source change is justified.
+
+Native Cloud evaluated `WinAppDataLocal/ABI_DOS/*` and watched zero files, so
+the run makes no save-transfer claim. Native Stop returned Steam to Play with
+`wine_exit=137`, `signal_received=true`, and a clean prefix. Steam uninstalled
+the depot with `No Error`, and Ullage removed the mapping. This added a
+different supported Cloud root to the current-package test set without
+leaving a disposable depot installed.
