@@ -945,3 +945,23 @@ local hash matched the backup exactly. Both native-stop receipts recorded
 generic mapper and Steam Cloud evidence; no title-specific Ullage code change
 was needed. The `._` upload is a recoverable host-filesystem artifact of the
 external MS-DOS FAT32 library, not part of the game's logical save.
+
+### 27. A small win32 Unity title can initialize a renderer without reaching the capture
+
+8-Bit Bayonetta (AppID `567090`) was a useful 54.53 MB external-library
+control. `ullagectl plan` identified the `win32` `8BB.exe` entry and no native
+Cloud roots; the current public package `2026.08.26-3` mapped it to
+`gamehub-container-3` and native Steam reached Running. Unity's
+`8BB_Data/output_log.txt` recorded a D3D11 creation failure (`0x80004005`)
+followed by a D3D9 device using the Wine-reported NVIDIA GeForce 6800. The
+live process had Steam's `steamloader.dylib` and `gameoverlayrenderer.dylib`
+loaded, but the desktop and Steam Helper captures remained on the Steam
+library page rather than the game surface. The test therefore records
+renderer initialization and transport, not a visible-menu or overlay
+interaction pass.
+
+Native Stop returned Steam to Play and the receipt recorded
+`native_stop_observed=true`, `wine_exit=137`, and `prefix_clean=true`. Steam
+uninstalled the depot with `No Error`, Ullage removed the mapping, and the
+160 KB of generated Unity log/AppleDouble residue was moved to the Trash. No
+Ullage code change is justified by this capture boundary.

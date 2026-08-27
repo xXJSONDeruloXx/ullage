@@ -262,6 +262,17 @@ host-filesystem artifact to account for in future FAT32 tests. Steam
 uninstalled the depot with `No Error`, preserving the small save/config
 directory, and Ullage removed the mapping cleanly.
 
+8-Bit Bayonetta (AppID `567090`) supplied a small current win32 control with
+the public package. Native Play reached Running through the guarded `8BB.exe`
+entry; Unity logged a D3D11 device-creation failure followed by a D3D9 device,
+and process inspection showed Steam's `steamloader.dylib` and
+`gameoverlayrenderer.dylib` loaded into the game. The game surface was not
+frontmost in the desktop capture, so this is renderer initialization and
+transport evidence, not a visible-menu or overlay-interaction claim. The
+title has no native Cloud roots in the current appinfo. Native Stop returned
+to Play with a clean prefix; Steam uninstalled the depot with `No Error` and
+Ullage removed the mapping.
+
 SPY Fox in: Cheese Chase (AppID `292280`) supplied a current win32 install,
 mapping, native Play, and process-level overlay control with the unchanged
 public package. The bundled ScummVM 2.1.0 config requested an invalid renderer
