@@ -175,6 +175,17 @@ capture; `F` means the title exited before the renderer criterion.
 | 848350 | Katamari Damacy REROLL | win64 | P | F | — | P | Fresh 3.3 GB external-library install. The packaged x64 bridge and overlay injection loaded and the process lived for about 35 seconds, then Wine exited with status 5 before a usable surface or native Stop event. The temporary native-Steam-launched x64 probe reached `steam_api_load=1` and `steam_api_init_begin=1` before the same status-5 boundary. |
 | 3520070 | Megabonk Demo | win64 | P | F | — | P | Fresh 157 MB external-library install. Native Play reached Running and the packaged x64 bridge/forwarder path was logged, but the title exited with Wine status 5 before a usable surface or native Stop event. |
 
+### Current-package x64 loader-order regression
+
+This follow-up uses the unchanged public runtime package
+`macos-x86_64-lsteamclient@2026.08.26-3` after Ullage commit `72d0c70`. It is
+separate from the pre-fix public-package rows above so the reproduced failure
+and the fixed result remain auditable.
+
+| AppID | Title | Arch | Launch | Renderer | Native Stop | Cleanup | Notes |
+| ---: | --- | :---: | :---: | :---: | :---: | :---: | --- |
+| 858710 | Gravity Circuit | win64 | P | P | P | P | The pre-fix package-root ordering reproduced Wine status 5 and the `0xBEEF` lsteamclient crash. With package-root-first `WINEDLLPATH` and direct Wine environment passing, the language-selection surface rendered; native Stop returned Steam to Play and the receipt recorded `wine_exit=137` with a clean prefix. |
+
 ## Per-title evidence
 
 The bridge log and Steam content log are the authoritative lifecycle artifacts.

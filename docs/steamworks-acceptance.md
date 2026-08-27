@@ -85,6 +85,26 @@ the bridge logged `wine_exit`, and the client returned the AppID to its
 installed state. It is not a claim that the game completed a meaningful play
 session.
 
+## Current x64 loader-order regression
+
+The public-package Katamari status-5 report was reproduced on this Mac. The
+same `lsteamclient.dll` `0xBEEF` signature appeared before the game renderer,
+even though the packaged artifacts matched the earlier manually assembled
+runtime. Removing the bridge's intermediate shell did not resolve it by
+itself; the failure cleared when the package root was restored as the first
+`WINEDLLPATH` entry and the computed launch environment was passed directly
+to Wine.
+
+Using the unchanged `2026.08.26-3` package with Ullage `72d0c70`, Gravity
+Circuit (AppID `858710`) rendered its language-selection surface. The native
+Steam overlay libraries were included in the launch transport, but this run
+claims transport evidence rather than a visible overlay interaction. Native
+Stop returned Steam to Play, the bridge recorded `wine_exit=137`, and the
+session receipt reported a clean prefix. This is a bridge-wide x64 launch
+regression fix, not a Gravity Circuit workaround; current Katamari and
+Megabonk public-package failures remain historical pre-fix rows until they
+are rerun.
+
 ## Feature-level matrix
 
 | Feature | Current evidence | Status |

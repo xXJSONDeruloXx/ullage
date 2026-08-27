@@ -732,3 +732,30 @@ now limited to real Steam executable suffixes and the fixture covers that
 negative case. It also deliberately excludes the long-lived `ipcserver`, which
 is supervised separately by Steam and must not keep normal appcache operations
 blocked after the client exits.
+
+### 18. Cross-machine x64 status-5 and loader-order regression
+
+The status-5 Katamari crash reported from a second Mac was reproduced on this
+host with the same public package, using both Katamari and the documented
+x64 Gravity Circuit control. The Unity crash report identifies
+`lsteamclient.dll` and the read address `0xBEEF`; GameHub's Wine log shows the
+same value is Wine's guarded failure path when the native Steam client call
+does not initialize. The four public bridge artifacts were byte-identical to
+the earlier manually assembled set, so downloading or rebuilding the package
+was not the missing step.
+
+The failing launch had two relevant bridge changes: an intermediate shell
+exported `WINEPREFIX_BASE`, `WINEARCH`, and `DYLD_INSERT_LIBRARIES`, and the
+package's `x86_64-windows` directory was placed ahead of the package root in
+`WINEDLLPATH`. Removing only the shell was insufficient. Restoring the
+package-root-first search order and passing the computed environment directly
+to Wine fixed the generic boundary without a title-specific override.
+
+With Ullage commit `72d0c70` and the unchanged public runtime package
+`2026.08.26-3`, Gravity Circuit rendered its language-selection screen from
+the external Steam library. Native Steam Stop produced the AppID-scoped
+termination event, returned the page to Play, and the receipt recorded
+`native_stop_observed=true`, `wine_exit=137`, and a clean prefix. The fix is
+covered by the bridge environment regression and the full `make check` suite;
+the runtime package was deliberately not republished because no artifact
+changed.

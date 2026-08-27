@@ -45,6 +45,14 @@ The native Steam client remains the source of steamclient.dylib, loader
 environment, IPC descriptors, user/session state, and overlay services. Ullage
 only passes those through the Wine launch boundary.
 
+The bridge keeps `BRIDGE_ROOT` as the first `WINEDLLPATH` entry, followed by
+the GPTK and Wine runtime paths. Do not prepend the package's
+`x86_64-windows` or `i386-windows` subdirectory: in the tested GameHub Wine
+environment that ordering makes x64 `lsteamclient` initialization fail before
+the game can render. The launch bridge passes `WINEPREFIX_BASE`, `WINEARCH`,
+and the computed `DYLD_INSERT_LIBRARIES` directly to Wine so the native Steam
+transport is not altered by an intermediate shell.
+
 ## Versioned bridge package
 
 `ullage-patches` produces a package containing the four bridge files listed
