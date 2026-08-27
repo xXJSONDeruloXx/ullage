@@ -490,6 +490,35 @@ REAPED_GAME_COUNT=0
 PREFIX_CLEAN=0
 STOP_MARKER="$SESSION_DIR/native-stop.$$.marker"
 WINE_GAME_ROOT=$(printf 'Z:%s' "$GAME_DIR" | /usr/bin/sed 's|/|\\|g')
+STEAM_EXIT_MARKER="$SESSION_DIR/steam-exit.$$.marker"
+
+steam_client_pid() {
+    /bin/ps -axo pid=,ucomm=,args= -ww 2>/dev/null |
+        /usr/bin/awk -v expected="$STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS/steam_osx" '
+            # The exact ucomm guard keeps this lookup from matching the ps/awk
+            # command line itself when the Steam root appears in its arguments.
+            # The first-argument form also supports test fixtures whose path
+            # has no spaces; native Steam paths are matched by ucomm below.
+            ($2 == "steam_osx" && index($0, expected)) || $3 == expected {
+                print $1
+                exit
+            }
+        '
+}
+
+steam_client_is_pid() {
+    expected_pid=$1
+    [ -n "$expected_pid" ] || return 1
+    /bin/ps -p "$expected_pid" -o pid=,ucomm=,args= -ww 2>/dev/null |
+        /usr/bin/awk -v expected_pid="$expected_pid" \
+            -v expected="$STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS/steam_osx" '
+            $1 == expected_pid &&
+                (($2 == "steam_osx" && index($0, expected)) || $3 == expected) {
+                found = 1
+            }
+            END { exit found ? 0 : 1 }
+        '
+}
 
 stop_steam_stop_watch() {
     if [ -n "${STEAM_STOP_WATCH_PID:-}" ]; then
@@ -505,12 +534,21 @@ start_steam_stop_watch() {
     watch_log=$1
     watch_bridge_pid=$2
     watch_offset=0
+    watch_steam_pid=$(steam_client_pid)
     if [ -f "$watch_log" ]; then
         watch_offset=$(wc -c <"$watch_log" | tr -d '[:space:]')
     fi
 
     (
         while kill -0 "$watch_bridge_pid" 2>/dev/null; do
+            if [ -n "$watch_steam_pid" ] &&
+                ! steam_client_is_pid "$watch_steam_pid"; then
+                printf '[ullage-bridge] native Steam client exited for appid=%s\n' \
+                    "$APP_ID" >>"$LOG_FILE"
+                : >"$STEAM_EXIT_MARKER"
+                kill -TERM "$watch_bridge_pid" 2>/dev/null || true
+                exit 0
+            fi
             if [ -f "$watch_log" ]; then
                 watch_size=$(wc -c <"$watch_log" | tr -d '[:space:]')
                 case "$watch_size" in
@@ -678,7 +716,9 @@ wait_and_reap() {
 write_receipt() {
     wine_exit_value=$1
     native_stop_value=0
+    steam_exit_value=0
     [ -f "$STOP_MARKER" ] && native_stop_value=1
+    [ -f "$STEAM_EXIT_MARKER" ] && steam_exit_value=1
     ULLAGE_RECEIPT_APPID="$APP_ID" \
     ULLAGE_RECEIPT_ENTRY="${LAUNCH_ENTRY:-}" \
     ULLAGE_RECEIPT_ARCH="$ARCH" \
@@ -691,6 +731,7 @@ write_receipt() {
     ULLAGE_RECEIPT_WINE_EXIT="$wine_exit_value" \
     ULLAGE_RECEIPT_SIGNAL="$SIGNAL_RECEIVED" \
     ULLAGE_RECEIPT_NATIVE_STOP="$native_stop_value" \
+    ULLAGE_RECEIPT_STEAM_EXIT="$steam_exit_value" \
     ULLAGE_RECEIPT_HELPERS="$REAPED_HELPER_COUNT" \
     ULLAGE_RECEIPT_GAMES="$REAPED_GAME_COUNT" \
     ULLAGE_RECEIPT_PREFIX_CLEAN="$PREFIX_CLEAN" \
@@ -725,6 +766,7 @@ receipt = {
     "started": os.environ.get("ULLAGE_RECEIPT_STARTED"),
     "ended": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     "native_stop_observed": boolean("ULLAGE_RECEIPT_NATIVE_STOP"),
+    "steam_client_exit_observed": boolean("ULLAGE_RECEIPT_STEAM_EXIT"),
     "wine_exit": integer("ULLAGE_RECEIPT_WINE_EXIT"),
     "signal_received": boolean("ULLAGE_RECEIPT_SIGNAL"),
     "reaped_game_processes": integer("ULLAGE_RECEIPT_GAMES"),
@@ -732,6 +774,7 @@ receipt = {
     "prefix_clean": boolean("ULLAGE_RECEIPT_PREFIX_CLEAN"),
     "last_stop": {
         "requested": boolean("ULLAGE_RECEIPT_NATIVE_STOP"),
+        "steam_client_exit_observed": boolean("ULLAGE_RECEIPT_STEAM_EXIT"),
         "wine_exit": integer("ULLAGE_RECEIPT_WINE_EXIT"),
         "signal_received": boolean("ULLAGE_RECEIPT_SIGNAL"),
         "reaped_game_processes": integer("ULLAGE_RECEIPT_GAMES"),
@@ -747,7 +790,7 @@ with open(sys.argv[1], "w", encoding="utf-8") as stream:
 PY
     chmod 600 "$RECEIPT_TMP"
     mv "$RECEIPT_TMP" "$RECEIPT_FILE"
-    rm -f "$STOP_MARKER"
+    rm -f "$STOP_MARKER" "$STEAM_EXIT_MARKER"
 }
 
 launch_clean() {

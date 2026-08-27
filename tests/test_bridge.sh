@@ -131,6 +131,7 @@ make_case() {
     CASE_RECEIPT=$state_home/sessions/42/last.json
     CASE_PREFIX=$prefix
     CASE_STEAM_LOG=$steam_root/logs/content_log.txt
+    CASE_STEAM_ROOT=$steam_root
     CASE_BRIDGE_ROOT=$bridge_root
     CASE_LEGACY_CLOUD_MARKER=$legacy_cloud_marker
 }
@@ -452,6 +453,59 @@ grep -F 'reaped:1' "$CASE_PREFIX/reaper-events" >/dev/null
 grep -F 'native Steam requested stop for appid=42' "$CASE_LOG" >/dev/null
 grep -F 'wine_exit=0 signal_received=1' "$CASE_LOG" >/dev/null
 
+make_case steam-exit term-hang
+fake_steam_argv0="$CASE_STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS/steam_osx"
+/bin/sh -c 'exec -a "$1" /bin/sleep 20' steam-osx-test "$fake_steam_argv0" &
+fake_steam_pid=$!
+set +e
+FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" &
+bridge_pid=$!
+ticks=0
+while [ ! -f "$CASE_PREFIX/wine-events" ] && [ "$ticks" -lt 40 ]; do
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+[ -f "$CASE_PREFIX/wine-events" ] || {
+    echo 'fake Wine did not start before Steam exit test' >&2
+    kill -TERM "$bridge_pid" 2>/dev/null || true
+    kill "$fake_steam_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    wait "$fake_steam_pid" 2>/dev/null || true
+    exit 1
+}
+kill "$fake_steam_pid"
+wait "$fake_steam_pid" 2>/dev/null || true
+ticks=0
+while [ "$ticks" -lt 100 ]; do
+    bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+    case "$bridge_state" in ''|Z*) break ;; esac
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+case "$bridge_state" in
+Z*|'') ;;
+*)
+    echo 'bridge did not stop after native Steam exited' >&2
+    cat "$CASE_LOG" >&2 || true
+    kill -KILL "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+    ;;
+esac
+wait "$bridge_pid"
+status=$?
+set -e
+[ "$status" -eq 143 ] || {
+    echo "expected Steam exit cleanup status 143, got $status" >&2
+    exit 1
+}
+grep -F 'native Steam client exited for appid=42' "$CASE_LOG" >/dev/null
+grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
+grep -F '"native_stop_observed": false' "$CASE_RECEIPT" >/dev/null
+grep -F '"steam_client_exit_observed": true' "$CASE_RECEIPT" >/dev/null
+grep -F '"prefix_clean": true' "$CASE_RECEIPT" >/dev/null
+
 make_case x64-forwarder slow-exit win64
 printf '%s\n' forwarder >"$CASE_BRIDGE_ROOT/x86_64-windows/steamclient64.dll"
 printf '%s\n' stale >"$CASE_PREFIX/drive_c/Program Files (x86)/Steam/steamclient64.dll"
@@ -485,5 +539,7 @@ set -e
 grep -F 'wine_exit=7 signal_received=0' "$CASE_LOG" >/dev/null
 
 echo 'steamclient64 forwarder validation: ok'
+
+echo 'native Steam exit supervision: ok'
 
 echo 'bridge supervision and Steam stop: ok'
