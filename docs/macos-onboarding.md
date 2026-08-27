@@ -1078,3 +1078,15 @@ attached; native Stop returned to Play with a clean prefix, and Steam
 uninstall plus Ullage removal completed with no depot residue. This is a
 useful low-cost control for separating the generic launch/renderer/lifecycle
 path from per-title Cloud capability.
+
+### 34. A delayed black Unity boot can still be a renderer pass
+
+Shipped (AppID `1037190`) supplied a fresh 250.38 MB x64 control using the
+current public package `2026.08.26-3`. Its initial window-specific capture was
+solid black, but the process remained healthy and a bounded wait reached the
+title's rendered Controls screen. Native Steam's loader and overlay renderer
+libraries were present, and `gameoverlayui` attached later in the session.
+Native Stop returned to Play with a clean prefix, and Steam uninstall plus
+Ullage removal completed without residue. For Unity titles, classify a black
+early capture only after checking whether the window changes and the process
+continues to initialize; do not add a renderer workaround from the first frame.
