@@ -248,6 +248,17 @@ uninstalled the depot and Ullage removed the mapping. The overlay process was
 observed but no visible overlay interaction is claimed, and the title has no
 Cloud feature claim here.
 
+DRACOMATON (AppID `2457890`) supplied a current win64 renderer, overlay
+attachment, native Stop, and Cloud control with the unchanged public package.
+The healthy `gameinstall` mapping let native Steam download and watch the real
+`RunData.json` and `SaveData.json` files; both were skipped as unmodified on
+exit. Because the test library is an MS-DOS FAT32 volume, macOS also created
+AppleDouble `._*.json` sidecars, and Steam uploaded those sidecars successfully.
+This proves the native Cloud transfer path, but not a game-written save change;
+the sidecar behavior is recorded as a host-filesystem boundary. Steam
+uninstalled the depot with `No Error`, preserving the small save/config
+directory, and Ullage removed the mapping cleanly.
+
 The current Gravity Circuit x64 probe ran on 2026-08-27 with the unchanged
 public package `2026.08.26-3` and an unmodified copy of the depot's
 `steam_api64.dll`. It returned `steam_api_load=1`, `steam_api_init=1`, a

@@ -864,3 +864,20 @@ process, eight reaped helpers, and a clean prefix in
 `~/.ullage/sessions/3483/last.json`. Steam then uninstalled the depot with
 `No Error`, and Ullage removed the mapping; the external manifest, depot
 directory, and per-game mapping files were absent afterward.
+
+### 22. FAT32 gameinstall roots can upload macOS AppleDouble sidecars
+
+The DRACOMATON (AppID `2457890`) Cloud run used the external `NO NAME` library,
+which is an MS-DOS FAT32 volume. Its `gameinstall` mapping correctly pointed
+native Steam at the depot's `GunJumpers/Dracomaton` save directory, and Steam
+downloaded and watched the real `RunData.json` and `SaveData.json` files.
+
+On exit, both real saves were reported as unmodified, but macOS had created
+AppleDouble metadata files named `._RunData.json` and `._SaveData.json` beside
+them. Steam's `*.json` Cloud pattern matched those sidecars and uploaded them
+successfully. This is not evidence that the game changed its saves, and no
+Ullage code change is justified yet: the mapper is correctly honoring the
+gameinstall root and the sidecars are produced by the host filesystem. For
+future Cloud-bearing tests, prefer an APFS library when possible or record and
+clean these recoverable sidecars deliberately; do not silently claim a clean
+save round trip from this pattern alone.

@@ -63,6 +63,13 @@ The following behavior is covered by tests or real runs:
   `remotecache.vdf` was deleted as empty. This is a title/client capability
   boundary, not a successful Cloud transfer, so no upload or round trip is
   claimed.
+* DRACOMATON exercised a current win64 `gameinstall` mapping on the public
+  package. Native Steam downloaded and watched its two real JSON saves, skipped
+  both as unmodified on exit, and completed an upload of macOS AppleDouble
+  `._*.json` sidecars created on the external MS-DOS FAT32 library. This is
+  successful native Cloud transfer evidence, but not a changed-save round trip;
+  the sidecars are a host-filesystem artifact to account for when testing
+  `gameinstall` roots on non-APFS volumes.
 * A stale local Steam Cloud cache can seed a missing prefix file once when the
   file satisfies the current UFS pattern and size/SHA-1 check. Existing prefix
   files are never overwritten by that seed path.
