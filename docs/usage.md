@@ -60,9 +60,20 @@ For an offline or manually downloaded archive, `runtime install --manifest`
 remains available and performs the same per-artifact verification.
 
 Only the four small lsteamclient/forwarder artifacts are staged under
-`~/.ullage/runtimes`; Wine, GPTK/D3DMetal, native Steam, and the prefix remain
-host-provided. `doctor` reports the package digest and the exact remediation
-if an artifact is missing or changed.
+`~/.ullage/runtimes`. The exact tested GameHub host-runtime option is separate:
+
+~~~sh
+bin/ullagectl runtime host-releases --json
+bin/ullagectl runtime host-fetch --json
+bin/ullagectl runtime host-verify --json
+~~~
+
+That path downloads the clean GameHub Wine archive from its pinned GitHub
+release and fetches the matching GPTK archive from the original locked source.
+It does not require GameHub.app and does not include a private game prefix.
+Pass `--gptk-archive PATH` to use an exact local GPTK archive. `doctor` reports
+the package/host manifests and the exact remediation if a required artifact is
+missing or changed.
 
 ## Machine-facing commands
 

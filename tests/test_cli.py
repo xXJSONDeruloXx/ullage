@@ -381,8 +381,8 @@ def main():
                 env={"HOME": str(runtime_home)},
             )
             assert code == 0
-            assert runtimes["count"] == 1
-            runtime = runtimes["runtimes"][0]
+            assert runtimes["count"] >= 1
+            runtime = next(item for item in runtimes["runtimes"] if item["id"] == "gamehub-container-2")
             assert runtime["id"] == "gamehub-container-2"
             assert runtime["status"] == "incomplete"
             assert any(check["id"] == "runtime-package" and check["status"] == "missing" for check in runtime["checks"])

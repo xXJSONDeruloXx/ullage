@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "id": "macos-x86_64-source-proton-11",
+  "status": "design",
+  "target": {
+    "platform": "darwin",
+    "architecture": "x86_64",
+    "host_execution": "Rosetta 2",
+    "wine_repository": "https://github.com/ValveSoftware/wine",
+    "wine_ref": "proton_11.0",
+    "wine_commit": "dc26e61847081a1b5cb0733dc30feba6ee575482",
+    "proton_repository": "https://github.com/ValveSoftware/Proton",
+    "proton_ref": "proton_11.0",
+    "proton_commit": "db9e6ffbf24a95b104fb699dd62532c70a2f9a51",
+    "patch_repository": "https://github.com/xXJSONDeruloXx/ullage-patches",
+    "patch_commit": "d2a5b75ed247f410cda746ca2cfe205e26f4f1ec",
+    "patch_series": [
+      "0001-macos-portability-and-lsteamclient-build.patch",
+      "0002-lsteamclient-macos-host-helpers.patch"
+    ]
+  },
+  "outputs": {
+    "wine_root": "wine",
+    "gptk_root": "gptk",
+    "prefix": "wine/prefix",
+    "bridge_runtime": "macos-x86_64-lsteamclient",
+    "manifest": "host-manifest.json"
+  },
+  "build_prerequisites": [
+    "Homebrew Bash 5 or newer",
+    "Homebrew autoconf",
+    "Homebrew bison",
+    "MinGW-w64 x86_64 and i686 compilers",
+    "amd64 SteamRT SDK container",
+    "at least 10 GiB temporary build space"
+  ],
+  "renderer_profiles": [
+    {
+      "id": "wined3d-moltenvk",
+      "status": "first-source-milestone",
+      "description": "Ordinary WineD3D/Vulkan path using the Wine/MoltenVK loader."
+    },
+    {
+      "id": "dxmt-overlay",
+      "status": "follow-up",
+      "description": "Per-runtime or per-AppID DXMT overlay for titles that reject the baseline path.",
+      "source": "https://github.com/3Shain/dxmt"
+    },
+    {
+      "id": "apple-gptk-user-supplied",
+      "status": "optional-input",
+      "description": "Apple GPTK/D3DMetal supplied by the user; not a source-built or Ullage-owned output."
+    }
+  ],
+  "acceptance": {
+    "controls": [3480, 848350],
+    "requires": [
+      "clean prefix",
+      "32-bit and 64-bit Steamworks initialization",
+      "native Steam Play and Stop lifecycle",
+      "fresh receipt with no residual Wine/game processes"
+    ]
+  }
+}

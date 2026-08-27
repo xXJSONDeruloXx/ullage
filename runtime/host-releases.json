@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "default": "runtime-macos-gamehub-2026-08-27-1",
+  "releases": [
+    {
+      "tag": "runtime-macos-gamehub-2026-08-27-1",
+      "host_runtime_id": "macos-x86_64-gamehub-wine-proton-11",
+      "version": "gamehub-wine-proton-11.0-gptk-3.0-3",
+      "provider": "gamehub",
+      "wine": {
+        "asset": "ullage-gamehub-wine-proton-11.0_0728.tar.zst",
+        "url": "https://github.com/xXJSONDeruloXx/ullage-patches/releases/download/runtime-macos-gamehub-2026-08-27-1/ullage-gamehub-wine-proton-11.0_0728.tar.zst",
+        "sha256": "e72b9016c1732955dc5b24a93e8c11e5611b9454e8e7cf1a04a68f1dd3f06fd0",
+        "archive_size": 438382677,
+        "source_url": "https://gamehub-cdn.youwo.com/uploads/emulator/20260729/5079412146d848948144147aff8fe24c.zst",
+        "source_sha256": "e72b9016c1732955dc5b24a93e8c11e5611b9454e8e7cf1a04a68f1dd3f06fd0",
+        "source_size": 438382677,
+        "distribution": "github-release-original-gamehub-bytes",
+        "archive_root": "."
+      },
+      "gptk": {
+        "asset": "gptk-3.0-3.tar.zst",
+        "url": "https://gamehub-cdn.youwo.com/uploads/emulator/20260310/019cd80eb685742793c443b74ed3e512.zst",
+        "sha256": "c02366780d7078c7b872c7eecff1157fe8579838a9ee3422295cecd5bc180c7b",
+        "archive_size": 16171863,
+        "source_url": "https://gamehub-cdn.youwo.com/uploads/emulator/20260310/019cd80eb685742793c443b74ed3e512.zst",
+        "source_sha256": "c02366780d7078c7b872c7eecff1157fe8579838a9ee3422295cecd5bc180c7b",
+        "source_size": 16171863,
+        "distribution": "original-gamehub-source-user-supplied",
+        "archive_root": "gptk-3.0-3"
+      },
+      "wine_manifest": {
+        "id": "wine-proton-11.0",
+        "name": "Wine Proton 11.0",
+        "version": "wine-11.0-gdbf9021e9406-dirty",
+        "architecture": "x86_64",
+        "warmup_package": "prefix",
+        "build_date": "2026-07-28",
+        "proton_version": "11.0",
+        "release_kind": "test",
+        "signature": "dbf9021e9406-dirty"
+      },
+      "bridge_release": {
+        "tag": "runtime-macos-2026-08-26-3",
+        "runtime_id": "macos-x86_64-lsteamclient",
+        "version": "2026.08.26-3"
+      },
+      "notes": "Exact clean GameHub Wine payload plus user-sourced Apple GPTK 3.0-3. No GameHub app, SandboxFS library, native Steam, or private virtual prefix is included."
+    }
+  ]
+}

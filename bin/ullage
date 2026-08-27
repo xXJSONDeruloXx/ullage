@@ -18,6 +18,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -36,6 +37,9 @@ CAPABILITIES = [
     "runtime_packages",
     "runtime_fetch",
     "runtime_rollback",
+    "host_runtime_releases",
+    "host_runtime_fetch",
+    "host_runtime_providers",
     "smoke_test",
 ]
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -57,6 +61,7 @@ APPINFO = load_module("ullage_appinfo_cli", "ullage-appinfo.py")
 MAPPING = load_module("ullage_mapping_cli", "ullage-mapping.py")
 CLOUD = load_module("ullage_cloud_cli", "ullage-cloud-native.py")
 RUNTIME = load_module("ullage_runtime_cli", "ullage-runtime.py")
+HOST_RUNTIME = load_module("ullage_host_runtime_cli", "ullage-host-runtime.py")
 
 
 class CLIError(Exception):
@@ -83,6 +88,8 @@ RECOVERABLE_ERRORS = {
     "forwarder_missing",
     "runtime_release_unavailable",
     "runtime_rollback_unavailable",
+    "host_runtime_release_unavailable",
+    "host_runtime_incomplete",
     "smoke_not_ready",
 }
 
@@ -117,6 +124,8 @@ def error_code(message: str, default: str = "command_failed") -> str:
         return "runtime_incomplete"
     if "cloud" in text and ("unsupported" in text or "not supported" in text):
         return "cloud_unsupported"
+    if "host runtime" in text and ("release" in text or "download" in text or "archive" in text):
+        return "host_runtime_release_unavailable"
     if "release" in text and ("download" in text or "pinned" in text or "archive" in text):
         return "runtime_release_unavailable"
     if "rollback" in text:
@@ -479,6 +488,86 @@ def gamehub_runtime_profiles(args: argparse.Namespace, state_root: Path) -> list
     return profiles
 
 
+def managed_host_runtime_profiles(state_root: Path) -> list[dict]:
+    """Expose release-installed host runtimes without requiring GameHub."""
+
+    profiles = []
+    bridge_root = bridge_root_for(argparse.Namespace(bridge_root=None), state_root)
+    for host in HOST_RUNTIME.list_installed(state_root):
+        if not host.get("host_runtime_id") or not host.get("version"):
+            continue
+        host_root = expand(host["root"])
+        profiles.append(
+            {
+                "id": f"ullage-host-{host['host_runtime_id']}-{host['version']}",
+                "name": f"Ullage {host.get('provider', 'host')} {host['version']}",
+                "provider": "gamehub-release" if host.get("provider") == "gamehub" else "host-release",
+                "wine_root": host.get("wine_root"),
+                "gptk_root": host.get("gptk_root"),
+                "prefix": None,
+                "prefix_template": host.get("prefix"),
+                "prefix_base": None,
+                "wine_arch": "win64",
+                "sandboxfs": False,
+                "sandboxfs_manifest": None,
+                "sandboxfs_lib": None,
+                "bridge_root": str(bridge_root) if bridge_root else None,
+                "supports": ["win32", "win64"],
+                "last_used": 1 if host.get("current") else 0,
+                "default": bool(host.get("current")),
+                "host_runtime": host,
+                "host_root": str(host_root),
+            }
+        )
+    return profiles
+
+
+def standalone_wine_profiles(state_root: Path) -> list[dict]:
+    """Show complete local Wine distributions even when their renderer is absent."""
+
+    candidates = []
+    explicit = os.environ.get("ULLAGE_WINE_STAGING_ROOT")
+    if explicit:
+        candidates.append(("configured-wine-staging", expand(explicit), "Configured Wine Staging"))
+    candidates.append(
+        (
+            "wine-staging-app",
+            Path("/Applications/Wine Staging.app/Contents/Resources/wine"),
+            "Wine Staging.app",
+        )
+    )
+    profiles = []
+    seen = set()
+    bridge_root = bridge_root_for(argparse.Namespace(bridge_root=None), state_root)
+    for runtime_id, wine_root, name in candidates:
+        resolved = wine_root.resolve(strict=False)
+        if resolved in seen or not wine_root.is_dir():
+            continue
+        seen.add(resolved)
+        profiles.append(
+            {
+                "id": runtime_id,
+                "name": name,
+                "provider": "wine-staging",
+                "wine_root": str(wine_root),
+                "gptk_root": None,
+                "prefix": None,
+                "prefix_base": None,
+                "wine_arch": "win64",
+                "sandboxfs": False,
+                "sandboxfs_manifest": None,
+                "sandboxfs_lib": None,
+                "bridge_root": str(bridge_root) if bridge_root else None,
+                "supports": ["win32", "win64"],
+                "renderer": "moltenvk",
+                "notes": "Complete x86_64 Wine distribution; no GPTK/D3DMetal was found beside it.",
+                "last_used": 0,
+                "default": False,
+            }
+        )
+    return profiles
+
+
 def configured_runtime_profile(args: argparse.Namespace, state_root: Path) -> dict | None:
     explicit_bridge = argument_path(args, "bridge_root")
     roots = {
@@ -558,6 +647,25 @@ def runtime_checks(profile: dict, state_root: Path | None = None) -> list[dict]:
         prefix = expand(profile["prefix"])
         checks.append(check_record("prefix", "Wine prefix", prefix, remediation="Choose an initialized Wine prefix.", directory=True))
         checks.append(check_record("prefix-system-reg", "Wine prefix registry", prefix / "system.reg", remediation="Initialize the selected Wine prefix."))
+    if profile.get("prefix_template"):
+        prefix_template = expand(profile["prefix_template"])
+        checks.append(
+            check_record(
+                "prefix-template",
+                "Clean prefix template",
+                prefix_template,
+                remediation="Repair or reinstall the host runtime prefix template.",
+                directory=True,
+            )
+        )
+        checks.append(
+            check_record(
+                "prefix-template-system-reg",
+                "Clean prefix template registry",
+                prefix_template / "system.reg",
+                remediation="Repair or reinstall the host runtime prefix template.",
+            )
+        )
     return checks
 
 
@@ -579,11 +687,23 @@ def decorate_runtime(profile: dict, state_root: Path) -> dict:
 
 def runtime_profiles(args: argparse.Namespace, state_root: Path) -> list[dict]:
     configured = configured_runtime_profile(args, state_root)
-    profiles = gamehub_runtime_profiles(args, state_root)
+    profiles = [
+        *gamehub_runtime_profiles(args, state_root),
+        *managed_host_runtime_profiles(state_root),
+        *standalone_wine_profiles(state_root),
+    ]
     if configured:
         return [decorate_runtime(configured, state_root), *[decorate_runtime(profile, state_root) for profile in profiles]]
     profiles = [decorate_runtime(profile, state_root) for profile in profiles]
-    profiles.sort(key=lambda profile: (profile["status"] == "ready", profile["id"]), reverse=True)
+    provider_priority = {"gamehub": 4, "gamehub-release": 3, "host-release": 2, "wine-staging": 1}
+    profiles.sort(
+        key=lambda profile: (
+            profile["status"] == "ready",
+            provider_priority.get(profile.get("provider"), 0),
+            profile["id"],
+        ),
+        reverse=True,
+    )
     return profiles
 
 
@@ -638,9 +758,9 @@ def doctor_next_steps(checks: list[dict]) -> list[dict]:
         "steam": "Install native Steam or pass --steam-root to its data root.",
         "windows-depot": "ullagectl steam set-depot-mode windows",
         "rosetta": "softwareupdate --install-rosetta",
-        "wine": "Install/select a compatible x86_64 GameHub/Wine runtime, then rerun doctor.",
+        "wine": "Run `ullagectl runtime host-fetch` or select a compatible x86_64 GameHub/Wine runtime, then rerun doctor.",
         "wineserver": "Select the wineserver from the same Wine/Proton installation as bin/wine.",
-        "gptk": "Install/select GPTK or D3DMetal containing external/libd3dshared.dylib.",
+        "gptk": "Run `ullagectl runtime host-fetch` or select GPTK/D3DMetal containing external/libd3dshared.dylib.",
         "lsteamclient-unix": "ullagectl runtime fetch",
         "lsteamclient-win32": "ullagectl runtime fetch",
         "lsteamclient-win64": "ullagectl runtime fetch",
@@ -648,7 +768,9 @@ def doctor_next_steps(checks: list[dict]) -> list[dict]:
         "runtime-package": "ullagectl runtime fetch",
         "prefix": "Create/select an initialized prefix and pass it with --prefix PATH.",
         "prefix-system-reg": "Initialize the selected Wine prefix so PREFIX/system.reg exists.",
-        "runtime-profile": "Install/select Wine, GPTK, and an initialized prefix, or pass their paths explicitly.",
+        "prefix-template": "Repair or reinstall the host runtime so its clean prefix template exists.",
+        "prefix-template-system-reg": "Repair or reinstall the host runtime so its clean prefix template is initialized.",
+        "runtime-profile": "Run `ullagectl runtime host-fetch` for the pinned option, or install/select Wine, GPTK, and an initialized prefix.",
     }
     steps = []
     for check in checks:
@@ -1565,6 +1687,33 @@ def command_smoke(args: argparse.Namespace) -> int:
     return output("smoke", {"smoke": smoke})
 
 
+def provision_prefix_template(template: str | Path, destination: str | Path) -> dict:
+    """Copy a verified clean host template into an AppID-owned prefix."""
+
+    source = expand(template)
+    target = expand(destination)
+    if source.is_symlink() or not source.is_dir() or not (source / "system.reg").is_file():
+        raise CLIError(f"clean prefix template is missing or not initialized: {source}")
+    if target.is_symlink():
+        raise CLIError(f"AppID prefix is a symlink: {target}")
+    if target.exists():
+        if not target.is_dir() or not (target / "system.reg").is_file():
+            raise CLIError(f"AppID prefix exists but is not initialized: {target}")
+        return {"status": "existing", "template": str(source), "prefix": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.provision-", dir=target.parent))
+    shutil.rmtree(temporary)
+    try:
+        shutil.copytree(source, temporary, symlinks=True)
+        if not (temporary / "system.reg").is_file():
+            raise CLIError(f"copied prefix template is not initialized: {temporary}")
+        os.replace(temporary, target)
+    except (OSError, CLIError) as exc:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise CLIError(f"could not provision AppID prefix {target}: {exc}") from exc
+    return {"status": "created", "template": str(source), "prefix": str(target)}
+
+
 def apply_runtime_defaults(args: argparse.Namespace) -> dict:
     """Resolve a runtime once, then fill installer-only paths from it."""
 
@@ -1613,6 +1762,10 @@ def resolve_install(args: argparse.Namespace) -> tuple[dict, dict]:
         args.install_dir = record["install_dir"]
     if not getattr(args, "prefix", None):
         args.prefix = profile.get("prefix") or str(state_root / "compatdata" / str(appid) / "pfx")
+        if profile.get("prefix_template"):
+            provision_prefix_template(profile["prefix_template"], args.prefix)
+    if profile.get("provider") == "gamehub-release":
+        RUNTIME.stage_forwarder(state_root, args.prefix)
     return record, profile
 
 
@@ -1664,17 +1817,17 @@ def install_arguments(args: argparse.Namespace) -> list[str]:
 
 
 def command_install(args: argparse.Namespace) -> int:
-    try:
-        record, profile = resolve_install(args)
-    except CLIError as exc:
-        return failure("install", str(exc), appid=getattr(args, "appid", None))
     if steam_running():
         return failure(
             "install",
             "Native Steam must be fully quit before installing a mapping.",
             "steam_running",
-            args.appid,
+            resolve_appid(args),
         )
+    try:
+        record, profile = resolve_install(args)
+    except CLIError as exc:
+        return failure("install", str(exc), appid=getattr(args, "appid", None))
     if not args.wine_root or not args.gptk_root or not args.bridge_root:
         return failure("install", "The selected runtime is incomplete.", "runtime_incomplete", args.appid)
     try:
@@ -1782,6 +1935,41 @@ def command_remove(args: argparse.Namespace) -> int:
 def command_runtime(args: argparse.Namespace) -> int:
     state_root = expand(args.state_dir)
     runtime_command = getattr(args, "runtime_command", None)
+    if runtime_command == "host-releases":
+        try:
+            catalog = HOST_RUNTIME.release_catalog(args.host_release_index)
+        except HOST_RUNTIME.HostRuntimeError as exc:
+            return failure("runtime host-releases", str(exc), "host_runtime_release_unavailable")
+        return output("runtime host-releases", catalog)
+    if runtime_command == "host-fetch":
+        try:
+            result = HOST_RUNTIME.fetch_release(
+                state_root,
+                args.host_release,
+                args.cache_dir,
+                args.host_release_index,
+                args.wine_archive,
+                args.gptk_archive,
+            )
+        except (OSError, HOST_RUNTIME.HostRuntimeError) as exc:
+            return failure("runtime host-fetch", str(exc), "host_runtime_release_unavailable")
+        return output("runtime host-fetch", result)
+    if runtime_command == "host-verify":
+        host = HOST_RUNTIME.current_host_runtime(state_root, validate_tree=True)
+        if host and host.get("ready"):
+            return output("runtime host-verify", {"host": host})
+        return output(
+            "runtime host-verify",
+            {
+                "host": host,
+                "error": {
+                    "code": "host_runtime_incomplete",
+                    "message": host.get("error") if host else "no active host runtime is installed",
+                    "recoverable": True,
+                },
+            },
+            ok=False,
+        )
     if runtime_command == "releases":
         try:
             catalog = RUNTIME.release_catalog(args.release_index)
@@ -1882,6 +2070,8 @@ def command_runtime(args: argparse.Namespace) -> int:
             "count": len(profiles),
             "current_package": RUNTIME.current_package(state_root),
             "packages": RUNTIME.list_installed(state_root),
+            "current_host_runtime": HOST_RUNTIME.current_host_runtime(state_root),
+            "host_runtimes": HOST_RUNTIME.list_installed(state_root),
         },
     )
 
@@ -2009,6 +2199,24 @@ def parser() -> argparse.ArgumentParser:
     runtime_list = runtime_commands.add_parser("list", help="list discovered runtimes")
     add_context(runtime_list)
     add_runtime_options(runtime_list)
+    host_releases = runtime_commands.add_parser(
+        "host-releases", help="list pinned Wine/GPTK host runtime releases"
+    )
+    add_context(host_releases)
+    host_releases.add_argument("--host-release-index", help=argparse.SUPPRESS)
+    host_fetch = runtime_commands.add_parser(
+        "host-fetch", help="download, verify, and install a pinned Wine/GPTK host runtime"
+    )
+    add_context(host_fetch)
+    host_fetch.add_argument("--host-release", help="pinned host runtime tag (defaults to the checked-in release)")
+    host_fetch.add_argument("--cache-dir", help="download cache directory (defaults under --state-dir)")
+    host_fetch.add_argument("--wine-archive", help="use a locally downloaded exact Wine archive")
+    host_fetch.add_argument("--gptk-archive", help="use a locally downloaded exact GPTK archive")
+    host_fetch.add_argument("--host-release-index", help=argparse.SUPPRESS)
+    host_verify = runtime_commands.add_parser(
+        "host-verify", help="verify the active installed Wine/GPTK host runtime"
+    )
+    add_context(host_verify)
     runtime_releases = runtime_commands.add_parser(
         "releases", help="list the pinned downloadable runtime releases"
     )

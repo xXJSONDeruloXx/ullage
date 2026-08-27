@@ -1,10 +1,12 @@
 # Runtime contract
 
-Ullage deliberately does not vendor Wine, GPTK/D3DMetal, native Steam, or a
-full Proton distribution. Those components have their own release cadence and
-licensing. The small lsteamclient bridge can now be installed as a versioned,
-checksum-verified package; Wine and GPTK remain host-provided components
-selected by the host setup.
+Ullage deliberately does not vendor native Steam, a private game prefix, or
+GameHub's proprietary SandboxFS library. The small lsteamclient bridge can be
+installed as a versioned, checksum-verified package. The exact tested GameHub
+Wine/GPTK stack is also available as a pinned host-runtime option, but GPTK
+remains an original-source/user-supplied component because its Apple-signed
+D3DMetal payload is not an Ullage-owned redistributable. A source-built Wine
+successor is tracked separately in [`docs/runtime-providers.md`](../docs/runtime-providers.md).
 
 The current bridge expects:
 
@@ -115,6 +117,29 @@ bin/ullagectl runtime restore-forwarder --prefix /path/to/prefix --json
 `runtime list` exposes both discovered host runtimes and installed package
 provenance. A mapping records the package ID, version, manifest path, and
 manifest digest; the bridge carries the same values into each session receipt.
+
+## Versioned host-runtime option
+
+The checked-in [`host-releases.json`](host-releases.json) locks the exact
+GameHub Wine Proton 11.0 archive and the exact GPTK 3.0-3 source archive. It
+does not contain a user prefix, native Steam, GameHub.app, or SandboxFS. On a
+machine without GameHub, install the host option with:
+
+```sh
+bin/ullagectl runtime host-releases --json
+bin/ullagectl runtime host-fetch --json
+bin/ullagectl runtime host-verify --json
+```
+
+`host-fetch` verifies both archive size and SHA-256 before extracting. Wine is
+downloaded from the tagged GitHub release using the original GameHub bytes;
+GPTK is fetched from the locked original source URL. An exact local GPTK
+archive can be supplied with `--gptk-archive PATH`. The installation is
+atomic under `~/.ullage/host-runtimes`, and a verified pointer is written to
+`host-runtimes/current.json` so `runtime list`, `doctor`, and install planning
+can select it without reading GameHub's registry. The host runtime includes a
+clean skeleton prefix at `wine/prefix`; Ullage still records per-game mappings
+and must not publish or reuse private account-bearing prefixes.
 
 ## Renderer component overlays
 

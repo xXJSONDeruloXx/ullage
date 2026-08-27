@@ -48,10 +48,17 @@ regenerated from recorded state.
 | Wine/GPTK process and prefix boundary | Ullage bridge |
 | Windows API translation and Steamworks handoff | Wine/GPTK + lsteamclient |
 | Versioned bridge artifact verification and staging | Ullage runtime package layer |
+| Versioned Wine/GPTK host option and clean-prefix layout | Ullage host-runtime package layer |
 
 Generated launchers, config, backups, prefixes, and logs are runtime state
 under `~/.ullage` by default. The repository is source and provenance, not a
 runtime data directory.
+
+The optional release-installed host runtime is separate state under
+`~/.ullage/host-runtimes`. It carries the exact clean GameHub Wine payload and
+the user-sourced matching GPTK payload, but never native Steam, GameHub's
+SandboxFS library, or an account-bearing per-game prefix. A source-built Wine
+provider can implement the same profile contract without changing the GUI.
 
 The machine-facing boundary is `bin/ullagectl`. It is a thin JSON facade over
 the existing helpers: it discovers GameHub runtimes, installed depots, and

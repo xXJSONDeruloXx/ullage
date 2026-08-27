@@ -53,6 +53,8 @@ bin/ullagectl diagnose APPID --json
 bin/ullagectl plan APPID --json
 bin/ullagectl smoke --json
 bin/ullagectl runtime releases --json
+bin/ullagectl runtime host-releases --json
+bin/ullagectl runtime host-verify --json
 ~~~
 
 `system-status`, `status`, and `discover` remain accepted aliases for
@@ -96,6 +98,7 @@ bin/ullagectl install APPID --runtime RUNTIME_ID --json
 bin/ullagectl repair APPID --json
 bin/ullagectl remove APPID --json
 bin/ullagectl runtime fetch --json
+bin/ullagectl runtime host-fetch --json
 bin/ullagectl runtime rollback --json
 bin/ullagectl runtime stage-forwarder --prefix PREFIX --json
 ~~~
@@ -150,10 +153,12 @@ The object also contains checks and optional SandboxFS paths when GameHub has
 them. A future provider can implement the same object without changing the
 GUI.
 
-`runtime list` also returns `packages` and `current_package`. A package is the
-small, versioned lsteamclient bridge staged by Ullage; Wine, GPTK/D3DMetal,
-native Steam, and the prefix remain host runtime inputs. Install and verify a
-package with:
+`runtime list` also returns `packages`, `current_package`, `host_runtimes`, and
+`current_host_runtime`. A bridge package is the small, versioned lsteamclient
+bridge staged by Ullage. A host runtime is a separate versioned Wine/GPTK
+installation with a clean prefix. Native Steam, account-bearing prefixes, and
+GameHub's proprietary SandboxFS remain outside both public release boundaries.
+Install and verify a bridge package with:
 
 ~~~sh
 bin/ullagectl runtime install --manifest PATH/manifest.json --json
@@ -174,6 +179,14 @@ every artifact, and only then installs the package. The archive is cached under
 `~/.ullage/downloads` by default; `--cache-dir` can place it on another volume.
 The release lock is in `runtime/releases.json` and must be updated together
 with a release asset and its digest.
+
+`runtime host-releases` exposes the pinned host-runtime lock. `runtime host-fetch`
+downloads and verifies the exact GameHub Wine archive from the tagged GitHub
+release, then obtains the exact GPTK archive from its locked original source
+URL (or accepts an exact local archive through `--gptk-archive`). It atomically
+installs both under `~/.ullage/host-runtimes`. `runtime host-verify` validates
+the active host manifest, required Wine/GPTK paths, and extracted symlink
+layout. This path does not require GameHub.app to be installed.
 
 `runtime rollback` atomically switches `current.json` to the previous verified
 package, or to the package named by `--runtime-id` and `--version`. Packages
