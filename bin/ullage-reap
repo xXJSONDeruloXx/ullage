@@ -105,6 +105,22 @@ has_open_path() {
         '
 }
 
+has_open_text() {
+    process_id=$1
+    path_root=$2
+    [ -x "$LSOF" ] || return 1
+    "$LSOF" -a -p "$process_id" -d txt -Fn 2>/dev/null |
+        /usr/bin/awk -v root="$path_root" '
+            /^n/ {
+                path = substr($0, 2)
+                if (path == root || index(path, root "/") == 1) {
+                    found = 1
+                }
+            }
+            END { exit(found ? 0 : 1) }
+        '
+}
+
 owns_prefix() {
     has_open_path "$1" "$PREFIX"
 }
@@ -178,12 +194,16 @@ is_live_game_process() {
     case "$process_command" in
         *"$WINE_GAME_ROOT"\\*|*"$WINE_GAME_ROOT"/*) ;;
         *)
-            # Some Windows games spawn a second executable and then exit the
-            # launcher. Wine reparents that child to PID 1, and its command
-            # line may no longer contain the Z: install path. The physical
-            # game-root handle is the fallback association in that case.
+            # Some Windows games unpack a second executable into the prefix,
+            # exit the launcher, and leave that child reparented to PID 1.
+            # Such a child has neither the Z: install path nor a handle to the
+            # original depot; its executable text path is the surviving
+            # prefix-scoped association.
             [ -n "$GAME_ROOT" ] || return 1
-            has_open_path "$process_id" "$GAME_ROOT" || return 1
+            if ! has_open_path "$process_id" "$GAME_ROOT" &&
+                ! has_open_text "$process_id" "$PREFIX"; then
+                return 1
+            fi
             ;;
     esac
     owns_prefix "$process_id"

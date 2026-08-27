@@ -704,6 +704,31 @@ wait_and_reap() {
                 $1 != self && index($0, "/awk ") == 0 && index($0, root) { print $1 }
             '
     )
+    if [ -z "$residual_pids" ] && [ -x /usr/sbin/lsof ]; then
+        residual_pids=$(
+            /bin/ps -axo pid=,ucomm=,command= -ww 2>/dev/null |
+                /usr/bin/awk -v self="$$" '
+                    $1 != self &&
+                        ($2 == "wine" || $2 == "wineserver" ||
+                         $2 == "wine-preloader" || $2 == "wine64-preloader" ||
+                         $0 ~ /[.]exe([[:space:]]|$)/) { print $1 }
+                ' |
+                while read -r process_id; do
+                    [ -n "$process_id" ] || continue
+                    [ "$process_id" = "$$" ] && continue
+                    /usr/sbin/lsof -a -p "$process_id" -Fn 2>/dev/null |
+                        /usr/bin/awk -v root="$PREFIX" '
+                            /^n/ {
+                                path = substr($0, 2)
+                                if (path == root || index(path, root "/") == 1) {
+                                    found = 1
+                                }
+                            }
+                            END { exit(found ? 0 : 1) }
+                        ' && printf '%s\n' "$process_id"
+                done
+        )
+    fi
     if [ -n "$residual_pids" ]; then
         PREFIX_CLEAN=0
     fi
