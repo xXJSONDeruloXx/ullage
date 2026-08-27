@@ -1147,3 +1147,24 @@ after Steam quit. The onboarding lesson is that a successful Running/Stop
 receipt and loaded Steam transport can be recorded independently of a title
 surface; do not add a per-title input or renderer workaround without a
 reproducible bridge-level failure.
+
+### 38. A fullscreen x86 title can validate the client-exit fallback
+
+One Gun Guy (AppID `1200580`) supplied a fresh 6.59 MB win32 external-library
+control using the current public package `2026.08.26-3`. After mapping and a
+native Steam restart, Play launched the x86 executable and a full-display
+capture showed its interactive title menu. x86 Steam transport and
+`gameoverlayui` were present.
+
+The title's fullscreen surface occluded the Steam Helper Stop control. Quitting
+native Steam therefore exercised the generic client-exit fallback rather than
+an AppID-scoped Stop event. The first run found a real cleanup gap: an unpacked
+`one screen.exe` child remained after the helper-only reap, despite the initial
+receipt reporting a clean prefix. The generalized fix in commit `3a5e83c`
+adds a selected-prefix executable-text fallback to the reaper and a filtered
+post-stop residual check. The rerun recorded eight reaped helpers plus
+`reaped_game_processes=1`, `steam_client_exit_observed=true`, `wine_exit=137`,
+and `prefix_clean=true`; a post-run process check found no selected-prefix
+residue. Steam uninstalled the depot with `No Error`, and Ullage removed the
+mapping after Steam quit. This confirms that a fullscreen title can validate
+launch, transport, and generalized cleanup without a per-title workaround.

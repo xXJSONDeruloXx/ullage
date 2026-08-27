@@ -424,6 +424,21 @@ Steam uninstalled the depot with `No Error`; after Steam quit, Ullage removed
 the mapping and left no depot residue. No supported Windows Cloud root,
 shipped-game Steamworks feature, or visible overlay interaction was claimed.
 
+One Gun Guy (AppID `1200580`) supplied a fresh 6.59 MB win32 control using the
+unchanged public package. Native Play launched the mapped x86 executable and
+a full-display capture showed its interactive title menu; x86 Steam transport
+and `gameoverlayui` were observed. Fullscreen occluded the Steam Helper Stop
+control, so quitting Steam exercised the generic client-exit fallback. The
+first run exposed an unpacked `one screen.exe` child that survived the
+helper-only reap even though the receipt initially reported a clean prefix.
+After generalized fix `3a5e83c`, the rerun recorded
+`steam_client_exit_observed=true`, `wine_exit=137`,
+`reaped_game_processes=1`, eight reaped helpers, and `prefix_clean=true`; a
+post-run process check found no selected-prefix residue. Steam uninstalled
+the depot with `No Error`; after Steam quit, Ullage removed the mapping and
+left no depot residue. No supported Windows Cloud root, shipped-game
+Steamworks feature, or visible overlay interaction was claimed.
+
 The current-package Cloud fixture checks also exposed a test-harness boundary,
 not a mapper defect. Gravity Circuit's mapped `WinAppDataRoaming` tree was
 empty; a unique `.sav` fixture was present before native Play, but Steam's
