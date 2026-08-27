@@ -76,6 +76,11 @@ The following behavior is covered by tests or real runs:
   round trip was attempted. Steam uninstall and Ullage removal removed the
   mapping and owned link while preserving the residual `Saves` directory as
   user data.
+* 7 Billion Humans exercised a current win32 `WinAppDataRoaming` mapping on the
+  public package. The owned prefix link was healthy and native Steam evaluated
+  the `profiles.bin` rule, but the fresh run created no matching file and Steam
+  watched zero files. No Cloud transfer or save round trip is claimed; Steam
+  uninstall and Ullage removal cleaned up the disposable install.
 * Current-package disposable Cloud probes did not claim a transfer. Gravity
   Circuit's empty `WinAppDataRoaming` tree had a unique `.sav` fixture, but
   native launch watched zero files and the fullscreen client-exit fallback

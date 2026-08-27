@@ -965,3 +965,23 @@ Native Stop returned Steam to Play and the receipt recorded
 uninstalled the depot with `No Error`, Ullage removed the mapping, and the
 160 KB of generated Unity log/AppleDouble residue was moved to the Trash. No
 Ullage code change is justified by this capture boundary.
+
+### 28. A fresh Windows-specific Cloud title can reproduce the status-3 boundary
+
+7 Billion Humans (AppID `792100`) was a fresh 226.7 MB external-library
+control using the current public package `2026.08.26-3`. Its installed target
+was independently verified as the PE32 `7 Billion Humans.exe`, and appinfo
+provided a `WinAppDataRoaming` rule for `profiles.bin`. Ullage installed the
+owned prefix mapping and native Steam launched the target, but the process
+exited with Wine status 3 before a visible renderer appeared. The receipt
+showed no native Stop request, no residual game or Wine helpers, and a clean
+prefix.
+
+Native Steam evaluated the Cloud root successfully but watched zero files
+because the fresh run did not create `profiles.bin`, so this run makes no
+download, upload, or save-round-trip claim. Steam uninstalled the depot with
+`No Error`, and Ullage removed the mapping. The result is consistent with the
+documented Human Resource Machine status-3 boundary, not a missing mapping,
+cleanup, or generalized Ullage failure. No title-specific workaround or
+source change is justified until a Windows-specific control survives the same
+boundary.
