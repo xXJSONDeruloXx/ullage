@@ -767,3 +767,14 @@ same native Stop cleanup, but the available capture was black, so it remains
 an x64 renderer near-miss rather than a pass. The unchanged package also
 continued to pass the Stellar Mess win32 transport/Stop control. These runs
 did not change the runtime artifacts or justify a new `ullage-patches` release.
+
+The unchanged package was also repeated with the small TIS-100 win32 control.
+Native Steam showed `TIS-100 - Running`, and the native Stop confirmation
+returned the page to Play. The receipt at
+`~/.ullage/sessions/370360/last.json` recorded
+`native_stop_observed=true`, `wine_exit=137`, `signal_received=true`, and a
+clean prefix. The page showed `Steam Cloud Out of Date` before launch, so this
+run does not add a new Cloud round-trip claim. The full-display capture was
+occluded by the Codex window; the prior TIS-100 rendered-surface evidence
+remains the renderer pass, while this repetition is transport/Stop evidence
+only.

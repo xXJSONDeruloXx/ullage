@@ -183,6 +183,14 @@ transport and supervision on this Mac; the x64 Steamworks feature rows above
 remain the prior direct-probe evidence until a current x64 title completes the
 probe and renderer paths.
 
+The package was also repeated with TIS-100 as a small win32 control. Native
+Steam reached Running and returned to Play after the Stop confirmation; the
+receipt at `~/.ullage/sessions/370360/last.json` recorded `wine_exit=137`,
+`signal_received=true`, and a clean prefix. The page displayed `Steam Cloud
+Out of Date` before launch, and the full-display capture was occluded by the
+Codex window, so this run adds lifecycle evidence but no new Cloud or renderer
+claim.
+
 ## Stop and cleanup boundary
 
 The native macOS client tracks the external launcher and its Wine descendants,

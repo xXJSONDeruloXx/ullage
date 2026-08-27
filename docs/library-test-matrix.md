@@ -188,6 +188,7 @@ and the fixed result remain auditable.
 | 848350 | Katamari Damacy REROLL | win64 | P | F | P | P | The fixed bridge no longer reproduced the status-5 crash: the process remained alive with the x64 bridge, overlay transport, and Unity crash handler loaded. The available desktop capture remained black, while native Stop returned Steam to Play and reaped eight helpers with a clean prefix. |
 | 3520070 | Megabonk Demo | win64 | P | P | P | P | The fixed bridge rendered the default DX11 menu through the x64 forwarder and native Steam transport. The desktop capture showed the game surface beneath the Steam window; native Stop returned Steam to Play and reaped seven helpers with a clean prefix. |
 | 1507530 | Stellar Mess: The Princess Conundrum (Chapter 1) | win32 | P | I | P | P | The 32-bit control remained healthy after the x64 loader-order change: native Play reached Running, the packaged bridge and overlay transport were logged, and native Stop returned Steam to Play with a clean prefix. |
+| 370360 | TIS-100 | win32 | P | I | P | P | A current-package repeat reached Running through native Play and returned to Play after the native Stop confirmation; `~/.ullage/sessions/370360/last.json` recorded `wine_exit=137`, `signal_received=true`, and a clean prefix. The Steam page showed `Steam Cloud Out of Date`, and the full-display capture was occluded by the Codex window, so this repeat does not claim a new renderer or Cloud pass. |
 
 ## Per-title evidence
 
