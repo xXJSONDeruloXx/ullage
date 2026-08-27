@@ -36,6 +36,7 @@ the acceptance criterion.
 | 8400 | Geometry Wars: Retro Evolved | P | P historically; latest repeats F | I | not configured | P | 32-bit path and overlay were visible in an earlier run; repeatability is an open renderer issue. |
 | 3480 | Peggle Deluxe | P | P | I; overlay observed | not configured | P | Strongest 32-bit legacy control; native Stop cleanup passed. |
 | 3590 | Plants vs. Zombies: Game of the Year | P | P | P; x86 lsteamclient and `gameoverlayui` observed | not configured | I | Fresh 48 MB Windows depot rendered its title screen through the public package. Fullscreen occlusion hid the Steam Helper Stop control; quitting Steam exercised the generic client-exit fallback and cleaned the prefix, but no AppID-scoped Stop event was claimed. |
+| 6100 | Eets | P | P | I; x86 bridge injection logged, no `gameoverlayui` process | I (`gameinstall` mapping; Steam AutoCloud disabled, zero watched files) | P | Fresh 143 MB Windows depot rendered the main menu. Native Stop and uninstall/removal passed; no shipped-game API or Cloud transfer claim is made. |
 | 584400 | Sonic Mania | P | P | I; native lsteamclient observed | P (`WinAppDataLocal` + `SteamCloudDocuments`) | P | Fresh mixed-root mapping caused Steam to create `steam_autocloud.vdf` under the Wine prefix's Windows `Documents/Steam Cloud` path. |
 | 848350 | Katamari Damacy REROLL | P | P (forwarder staged) | P (x64 probe + native Play) | P (2 files) | P | Canonical-name `steamclient64.dll` forwarder removed the shared x64 SteamAPI stall; repeated Play/confirmed Stop/relaunch on 2026-08-25 returned cleanly to Play. |
 | 3784030 | RACCOON: Coin Pusher Roguelike | P | F (black surface) | I | P | P | Native Cloud changed-file upload round trip passed. |
@@ -203,6 +204,20 @@ client-exit fallback. The receipt recorded `steam_client_exit_observed=true`,
 helpers, and a clean prefix. The title has no supported Windows Cloud root, so
 no Cloud claim is made. Steam then uninstalled the 54 MB depot and Ullage
 restored the original launch entry.
+
+Eets (AppID `6100`) supplied a current win32 renderer and native-Stop control
+with the same public package. Its fresh 143 MB Windows depot rendered the
+main menu, and the bridge log recorded the x86 runtime and Steam transport
+injection. No `gameoverlayui` process attached during the run, so this is
+indirect transport evidence rather than a visible overlay claim. The healthy
+`gameinstall` mapping used zero seeded files, while Steam's native cloud log
+explicitly reported `Sync Disabled` and `AutoCloud is disabled`; no Cloud
+upload or round trip is claimed. Native Stop produced the expected
+`App Running` -> `Terminating` -> `Fully Installed` transition, and the
+receipt recorded `native_stop_observed=true`, `wine_exit=137`, and a clean
+prefix. Steam then uninstalled the depot with `No Error`, Ullage removed the
+mapping and launch state, and the small residual test directory was moved to
+the macOS Trash; the appinfo backups remain available for provenance.
 
 The current Gravity Circuit x64 probe ran on 2026-08-27 with the unchanged
 public package `2026.08.26-3` and an unmodified copy of the depot's

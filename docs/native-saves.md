@@ -57,6 +57,12 @@ The following behavior is covered by tests or real runs:
   preserved, but the title stayed on its loading surface and the native client
   was quit before Cloud exit evaluation, so no changed-file upload or round
   trip is claimed.
+* Eets exercised a healthy `gameinstall` mapping on the current public package,
+  but Steam's native log explicitly marked the session `Sync Disabled` and
+  `AutoCloud is disabled`; the watched-file set was empty and
+  `remotecache.vdf` was deleted as empty. This is a title/client capability
+  boundary, not a successful Cloud transfer, so no upload or round trip is
+  claimed.
 * A stale local Steam Cloud cache can seed a missing prefix file once when the
   file satisfies the current UFS pattern and size/SHA-1 check. Existing prefix
   files are never overwritten by that seed path.

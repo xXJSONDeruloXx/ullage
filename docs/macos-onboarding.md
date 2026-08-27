@@ -816,4 +816,9 @@ game owns the frontmost surface; use fresh screenshots after each action and
 the bridge/Steam logs for lifecycle evidence. The current EXAPUNKS run showed
 the native Cloud synchronization start and a healthy `gameinstall` mapping,
 then stayed on its loading surface; quitting Steam used the client-exit
-fallback cleanly, but no Cloud upload was inferred.
+fallback cleanly, but no Cloud upload was inferred. Eets then provided a
+different boundary: its `gameinstall` mapping and rendered main menu passed,
+but Steam explicitly reported `Sync Disabled`/`AutoCloud is disabled` and no
+`gameoverlayui` process attached. Native Stop, Steam uninstall, and Ullage
+mapping cleanup still passed, so this title is useful for separating title
+capability from bridge lifecycle correctness.
