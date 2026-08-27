@@ -43,6 +43,16 @@ Other publicly available choices were checked for suitability:
   option only after a real Steamworks profile has been validated; it is not a
   release dependency.
 
+The local `/Users/kurt/Developer/gamenative-proton-wine-reference` checkout was
+also checked before starting a new build. It is a 73 MB shallow
+`GameNative/proton-wine` `proton_10.0` source checkout at commit
+`147d88ee0c4eee8b356110dd0c53cc44b7515f73`, with no built macOS binaries and no
+`lsteamclient` source or output in the checkout. Its `build-scripts` target
+Android/Termux (`x86_64-linux-android28`, `/data/data/com.termux`) while
+`tools/gitlab/build-mac` is a generic Wine CI recipe. It is useful prior art,
+but it is not an already-installed or selectable macOS Steamworks runner and
+does not supersede the pinned Valve Wine/Proton source contract below.
+
 ## Exact GameHub release option
 
 `runtime-macos-gamehub-2026-08-27-1` carries the original clean GameHub Wine
