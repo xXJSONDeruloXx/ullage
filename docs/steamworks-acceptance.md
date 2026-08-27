@@ -52,6 +52,7 @@ the acceptance criterion.
 | 1743850 | HYPER DEMON | P | F | I | not configured | P | Native Play reached Running, but GLFW/OpenGL context creation failed before a usable game surface. No shipped-game Steamworks calls or Cloud roots were exercised; natural exit cleanup passed and native Stop was not needed. |
 | 292280 | SPY Fox in: Cheese Chase | P | P | I | I (`gameinstall` mapping; no save round trip) | P | Fresh 32-bit ScummVM Windows depot. Native Play reached the rendered title scene with `gameoverlayui` attached; two native Stop cycles returned to Play and left no selected-prefix processes. The native mapper installed and restored the `gameinstall` root, but no Cloud transfer or shipped-game API feature was deliberately exercised. |
 | 1086010 | 198X | P | P | I; x64 lsteamclient and `gameoverlayui` observed | not supported | P | Fresh 500.66 MB x64 depot. The ordinary mapping path rendered the 198X menu twice; explicit `--cloud-native` planning correctly refused the title because appinfo has no supported Windows Cloud root. Both native Stop cycles returned to Play with clean prefixes, and Steam uninstall plus Ullage removal completed cleanly. No shipped-game API feature or visible overlay interaction is claimed. |
+| 2932930 | 100 Korea Cats | P | P | I; x64 lsteamclient and `gameoverlayui` observed | not supported | P | Fresh 290.88 MB x64 depot. The ordinary mapping path rendered the title menu; appinfo has no supported Windows Cloud root. Native Stop and Steam uninstall plus Ullage removal completed cleanly. No shipped-game API feature or visible overlay interaction is claimed. |
 | 322190 | SteamWorld Heist | P | P | I | I (`MacAppSupport` observed; no Windows mapping or save round trip) | P | Fresh 32-bit sprite/OpenAL Windows depot. Native Play reached the interactive menu with `gameoverlayui` attached; two native Stop cycles returned to Play and left no selected-prefix processes. The native client continued to show Cloud Out of Date because this app exposes `MacAppSupport`, outside Ullage's Windows-root mapper. |
 | 4663130 | Normal Golf Game Demo | P | P | I; overlay observed | not configured | P | Fresh Windows-only nested x64 Unity depot. Both native Play cycles reached the rendered streamer-mode surface with `gameoverlayui` attached; confirmed Stop returned cleanly to Play. No shipped-game Steamworks feature calls or Cloud roots were deliberately exercised. |
 | 2677470 | POOLS Demo | P | P | I; overlay observed | I (`WinAppDataLocalLow` mapping; no save round trip) | P | Fresh multi-platform Unity/OpenXR depot. Auto mode patched Windows entries 0 and 3 into separate launchers while preserving native macOS/Linux entries. Three native default Play/confirmed-Stop cycles rendered the POOLS menu and returned cleanly; Steam Cloud launch/exit evaluation watched the prefix-side `Tensori/Pools` path and found no matching save files. The OpenXR/BetaKey option was not selected by this macOS session. |
@@ -357,6 +358,16 @@ Steam to Play with `native_stop_observed=true`, `wine_exit=137`, eight helpers
 reaped, and clean prefixes. No shipped-game Steamworks feature or visible
 overlay interaction is claimed. Steam uninstalled the depot with `No Error`
 and Ullage removed the mapping.
+
+100 Korea Cats (AppID `2932930`) supplied a small current x64 renderer and
+lifecycle control with the unchanged public package. The appinfo record has no
+supported Windows Cloud root, so the ordinary launch mapping was used. Native
+Play rendered the title's monochrome line-art menu with `gameoverlayui`
+attached. Native Stop returned Steam to Play with
+`native_stop_observed=true`, `wine_exit=137`, eight helpers reaped, and a clean
+prefix. No shipped-game Steamworks feature or visible overlay interaction is
+claimed. Steam uninstalled the depot with `No Error` and Ullage removed the
+mapping.
 
 The current-package Cloud fixture checks also exposed a test-harness boundary,
 not a mapper defect. Gravity Circuit's mapped `WinAppDataRoaming` tree was

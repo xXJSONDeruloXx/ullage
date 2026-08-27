@@ -1067,3 +1067,14 @@ two Play cycles. Both native Stop cycles and cleanup passed; Steam uninstall
 returned `No Error` and Ullage removed the mapping. The lesson is to treat
 Cloud support as a per-title capability, not as a prerequisite for the normal
 Steam launch path.
+
+### 33. Small titles without Cloud metadata still validate the normal launch path
+
+100 Korea Cats (AppID `2932930`) supplied a fresh 290.88 MB x64 control using
+the current public package `2026.08.26-3`. Its appinfo record had no supported
+Windows Cloud root, so Ullage used the ordinary mapping mode. Native Steam
+rendered the title's monochrome line-art menu with the overlay process
+attached; native Stop returned to Play with a clean prefix, and Steam
+uninstall plus Ullage removal completed with no depot residue. This is a
+useful low-cost control for separating the generic launch/renderer/lifecycle
+path from per-title Cloud capability.
