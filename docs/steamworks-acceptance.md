@@ -325,6 +325,28 @@ exercised the generic fallback and left a clean prefix. Steam uninstalled the
 depot with `No Error`, Ullage removed the mapping, and no Cloud round trip is
 claimed because no save was modified.
 
+911 Operator (AppID `503560`) supplied a current win32 Unity control with two
+Windows launch entries. The fresh ~1.05 GB depot mapped a
+`WinAppDataLocalLow` Cloud root. Native Play launched `911.exe` through the
+current package; the title's Unity selector initially required a test-only
+in-prefix Windows message probe because this rotated macOS display did not
+accept shell-level CGEvent input. After the selector's `Play!` button was
+activated, a window-specific capture showed the rendered introductory surface.
+The game log recorded a D3D11 failure followed by D3D9/NVIDIA GeForce 6800
+initialization, and native Steam attached `gameoverlayui`. A Shift+Tab probe
+did not produce a separately capturable overlay panel, so no visible overlay
+interaction is claimed.
+
+The Steam chooser's `Launch Edit Calls!` entry also launched `CallEditor.exe`
+through its generated entry-specific launcher and rendered the editor surface.
+Its Unity log reached Steamworks.NET workshop callback code
+(`SteamAPI_RunCallbacks`, `WorkShopTest`) and reported zero workshop XML
+files. Both entries were stopped through native Steam with
+`native_stop_observed=true`, `wine_exit=137`, and clean prefixes. Native Cloud
+evaluated the `WinAppDataLocalLow` rule on launch and exit but watched zero
+files on both fresh runs, so no transfer claim is made. Steam uninstalled the
+depot with `No Error` and Ullage removed the mapping.
+
 The current-package Cloud fixture checks also exposed a test-harness boundary,
 not a mapper defect. Gravity Circuit's mapped `WinAppDataRoaming` tree was
 empty; a unique `.sav` fixture was present before native Play, but Steam's

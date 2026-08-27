@@ -94,6 +94,11 @@ The following behavior is covered by tests or real runs:
   its GameMaker graphics error, but found zero matching files and watched zero
   files. The run therefore makes no Cloud transfer claim; Steam uninstall and
   Ullage removal cleaned up the disposable install.
+* 911 Operator exercised a current win32 `WinAppDataLocalLow` mapping on the
+  public package. Native Steam evaluated the root on both the default
+  `911.exe` and `CallEditor.exe` runs but watched zero files on each fresh run.
+  No Cloud transfer or save round trip is claimed; Steam uninstall and Ullage
+  removal cleaned up the disposable depot.
 * Current-package disposable Cloud probes did not claim a transfer. Gravity
   Circuit's empty `WinAppDataRoaming` tree had a unique `.sav` fixture, but
   native launch watched zero files and the fullscreen client-exit fallback

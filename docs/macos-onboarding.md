@@ -1030,3 +1030,27 @@ the run makes no save-transfer claim. Native Stop returned Steam to Play with
 the depot with `No Error`, and Ullage removed the mapping. This added a
 different supported Cloud root to the current-package test set without
 leaving a disposable depot installed.
+
+### 31. Unity display selectors may need an in-prefix input path on a rotated Mac display
+
+911 Operator (AppID `503560`) supplied a fresh ~1.05 GB win32 Unity control
+using the current public package `2026.08.26-3`. Native Play initially showed
+the title's `911 Operator Configuration` window with a 720x1280 rotated
+display selection. This Mac reported `CGPreflightPostEventAccess=false`, so
+shell-level CGEvent clicks did not reach the Wine window. A scoped, test-only
+in-prefix Windows message probe, run with the same bridge environment
+including SandboxFS injection, enumerated the dialog and activated its `Play!`
+child button. The game then created a full-screen Wine window and rendered its
+intro; its log recorded D3D11 failure followed by D3D9/NVIDIA GeForce 6800
+initialization.
+
+The second Steam chooser entry, `Launch Edit Calls!`, launched
+`CallEditor.exe` through its entry-specific launcher and rendered the editor
+surface. Its Unity log reached Steamworks.NET workshop callbacks. Native
+Steam attached `gameoverlayui` to the default game process, but Shift+Tab did
+not yield a separately capturable overlay panel, so this run claims process
+evidence rather than visible overlay interaction. Both entries passed native
+Stop with clean prefixes. Cloud evaluated the mapped `WinAppDataLocalLow`
+root but watched zero files on each fresh run. Steam uninstalled the depot with
+`No Error`, and Ullage removed the mapping. Treat the selector/input issue as
+a host capture boundary, not a title-specific source workaround.
