@@ -60,6 +60,9 @@ def make_fixture():
     install = steam / "steamapps/common/Example"
     install.mkdir(parents=True)
     (install / "Game.exe").write_bytes(b"MZ\0\0")
+    implicit_install = steam / "steamapps/common/ImplicitWindows"
+    implicit_install.mkdir(parents=True)
+    (implicit_install / "Loose.exe").write_bytes(b"MZ\0\0")
     external = root / "external-library"
     external_install = external / "steamapps/common/External"
     external_install.mkdir(parents=True)
@@ -71,6 +74,15 @@ def make_fixture():
         '    "name" "Example Game"\n'
         '    "StateFlags" "4"\n'
         '    "installdir" "Example"\n'
+        '}\n',
+        encoding="utf-8",
+    )
+    (steam / "steamapps/appmanifest_44.acf").write_text(
+        '"AppState"\n{\n'
+        '    "appid" "44"\n'
+        '    "name" "Implicit Windows Game"\n'
+        '    "StateFlags" "4"\n'
+        '    "installdir" "ImplicitWindows"\n'
         '}\n',
         encoding="utf-8",
     )
@@ -110,8 +122,14 @@ def make_fixture():
     }
     not_installed_sections = {
         "appinfo": {
-            "common": {"name": "Not Installed Game", "type": "game", "oslist": "windows"},
+            "common": {"name": "Not Installed Game", "type": "game"},
             "config": {"launch": {"0": {"executable": "Game.exe"}}},
+        }
+    }
+    implicit_sections = {
+        "appinfo": {
+            "common": {"name": "Implicit Windows Game", "type": "game"},
+            "config": {"launch": {"0": {"executable": "Loose.exe"}}},
         }
     }
     external_sections = {
@@ -122,7 +140,12 @@ def make_fixture():
     }
     version = APPINFO_HELPERS.MODULE.APPINFO_28
     records = []
-    for appid, record_sections in ((42, sections), (43, external_sections), (77, not_installed_sections)):
+    for appid, record_sections in (
+        (42, sections),
+        (43, external_sections),
+        (44, implicit_sections),
+        (77, not_installed_sections),
+    ):
         encoded = APPINFO_HELPERS.encode_v28_dict(record_sections)
         records.append(
             struct.pack(
@@ -295,7 +318,7 @@ def main():
         code, library = run_cli("library", *context)
         assert code == 0
         assert library["api_version"] == 1
-        assert library["count"] == 2
+        assert library["count"] == 3
         game = next(item for item in library["games"] if item["appid"] == 42)
         assert (game["appid"], game["state"]) == (42, "available")
         assert game["windows_depot_present"]
@@ -305,6 +328,11 @@ def main():
         external_game = next(item for item in library["games"] if item["appid"] == 43)
         assert external_game["install_dir"].endswith("/external-library/steamapps/common/External")
         assert external_game["launch_options"][0]["usable"]
+        implicit_game = next(item for item in library["games"] if item["appid"] == 44)
+        assert implicit_game["state"] == "available"
+        assert implicit_game["windows_depot_present"]
+        assert implicit_game["launch_options"][0]["usable"]
+        assert implicit_game["launch_options"][0]["arch"] == "unknown-pe"
         assert library["not_installed_count"] == 1
         assert library["not_installed"][0]["state"] == "not_installed"
         assert library["not_installed"][0]["appid"] == 77

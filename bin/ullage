@@ -874,7 +874,11 @@ def launch_entries(appinfo, appid: int, install_dir: Path, state: dict) -> list[
             original_config = disabled.get("original_config")
             if isinstance(original_config, dict):
                 oslist = original_config.get("oslist")
-        if not oslist_has(oslist, "windows"):
+        # Some Windows-only Steam records omit both platform annotations.
+        # A relative .exe is the remaining reliable Windows launch signal.
+        if oslist is not None and not oslist_has(oslist, "windows"):
+            continue
+        if oslist is None and not executable.lower().endswith(".exe"):
             continue
         is_pe = executable.lower().endswith(".exe")
         path = APPINFO._depot_path(install_dir, executable) if is_pe else None
@@ -1202,7 +1206,8 @@ def catalog_launch_entries(appinfo, appid: int) -> list[dict]:
         oslist = config.get("oslist") if isinstance(config, dict) else None
         if oslist is None:
             oslist = common_os
-        if not oslist_has(oslist, "windows"):
+        # Steam can omit platform annotations for a Windows-only .exe launch.
+        if oslist is not None and not oslist_has(oslist, "windows"):
             continue
         workingdir = item.get("workingdir", "")
         if not isinstance(workingdir, str):
