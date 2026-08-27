@@ -110,6 +110,10 @@ make_case() {
         "WINE_ROOT='$wine_root'" \
         "GPTK_ROOT='$gptk_root'" \
         "BRIDGE_ROOT='$bridge_root'" \
+        "RUNTIME_PACKAGE_ID='test-package'" \
+        "RUNTIME_PACKAGE_VERSION='test-1'" \
+        "RUNTIME_MANIFEST='$case_root/runtime-manifest.json'" \
+        "RUNTIME_MANIFEST_SHA256='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'" \
         "STATE_HOME='$state_home'" \
         "FD_EXEC='$TEMP_ROOT/fd-exec'" \
         "REAPER='$TEMP_ROOT/reaper'" \
@@ -142,6 +146,8 @@ grep -F 'wine_exit=7 signal_received=0' "$CASE_LOG" >/dev/null
 [ -f "$CASE_RECEIPT" ]
 grep -F '"api_version": 1' "$CASE_RECEIPT" >/dev/null
 grep -F '"prefix_clean": true' "$CASE_RECEIPT" >/dev/null
+grep -F '"runtime_id": "test-package"' "$CASE_RECEIPT" >/dev/null
+grep -F '"version": "test-1"' "$CASE_RECEIPT" >/dev/null
 grep -F -- '-w:' "$CASE_PREFIX/wineserver-events" >/dev/null
 [ ! -e "$CASE_LEGACY_CLOUD_MARKER" ] || {
     printf '%s\n' 'legacy Cloud hook unexpectedly ran' >&2

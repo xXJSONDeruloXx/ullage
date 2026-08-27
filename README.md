@@ -74,7 +74,7 @@ call the lower-level mapping or AppInfo tools directly. See the
 * [Steamworks acceptance](docs/steamworks-acceptance.md) — real-game matrix,
   probes, and known compatibility boundaries.
 * [Runtime contract](runtime/README.md) — host-supplied Wine/GPTK and
-  lsteamclient requirements.
+  lsteamclient requirements, plus verified bridge-package installation.
 * [macOS onboarding log](docs/macos-onboarding.md) — first-machine setup
   evidence, road bumps, and the remaining end-to-end test gaps.
 

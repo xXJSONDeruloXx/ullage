@@ -11,8 +11,8 @@ fresh desktop capture containing the game surface; a Steam page showing
 
 * Entitled AppIDs inventoried: **521**.
 * Minimum for the requested 30%: **157 unique AppIDs**.
-* Unique AppIDs tested in this run: **75**.
-* Remaining to the 30% target: **82**.
+* Unique AppIDs tested in this run: **85**.
+* Remaining to the 30% target: **72**.
 * Storage is being kept bounded by installing small titles, testing them, and
   uninstalling them through Steam before moving on.
 
@@ -47,7 +47,7 @@ will require a user action-time acceptance before they can be exercised.
 
 These titles reached the Ullage boundary but are not included in the tested
 count because they did not produce a usable renderer result. Their boundary
-and cleanup evidence is still useful, and coverage remains **75/157**.
+and cleanup evidence is still useful, and coverage remains **85/157**.
 
 | AppID | Title | Evidence | Classification |
 | ---: | --- | --- | --- |
@@ -139,6 +139,27 @@ run. “Renderer” is intentionally separate from launch and Steamworks evidenc
 | 2457890 | DRACOMATON | win64 | P | P | P | P | Freshly downloaded 285 MB Windows/macOS Unity depot with a `gameinstall` Cloud root. Native Play and relaunch reached the rendered DRACOMATON menu with `gameoverlayui` attached; native Cloud downloaded and watched two JSON saves through the mapped `MacAppSupport` path. Both confirmed Stop cycles returned to Play and reaped the Wine helper set; Steam uninstall plus Ullage removal restored the original launch and removed the owned Cloud link. |
 
 | 1144770 | SLUDGE LIFE | win64 | P | P | P | P | Freshly downloaded 690 MB Windows-only Unity depot. Native Play entered Running and rendered the full-screen first-run LOGIN surface for more than 50 seconds; native Stop returned to Play with no selected-prefix processes. The first-run gate prevented a gameplay or save round trip, so those remain unclaimed. |
+
+## Latest ten-title pass
+
+These ten newly selected titles were installed into the external Steam library,
+mapped through the GameHub runtime, launched from native Steam, and removed
+after the run. `I` records indirect evidence such as a live process or bridge
+termination when a fresh game surface or native Stop transition could not be
+confirmed; it is not promoted to `P`.
+
+| AppID | Title | Arch | Launch | Renderer | Native Stop | Cleanup | Notes |
+| ---: | --- | :---: | :---: | :---: | :---: | :---: | --- |
+| 70 | Half-Life | win32 | P | P | P | P | Fresh 562 MB Windows depot. Native Cloud synchronization and the Cloud Out of Date/Play Anyway flow were observed; lsteamclient, overlay, native Stop, and prefix cleanup passed. No changed-save round trip was claimed. |
+| 312990 | Expendabros | win32 | P | I | I | P | Fresh 168 MB depot. The 32-bit path loaded lsteamclient and the overlay bridge, but the available full-screen capture was black. The bridge termination fallback completed cleanly; no native Stop transition was claimed. Cloud metadata had no supported Windows root. |
+| 345820 | Shantae | win32 | P | F | — | P | Fresh 418 MB depot. The title reached Steam Running and exited with Wine status 3 before a usable surface; no native Stop was needed. Cloud metadata had no supported Windows root. |
+| 1114290 | Windjammers 2 | win64 | P | F | — | P | Fresh 464 MB x64 depot. The DirectX 12 process loaded the x64 lsteamclient, overlay, GPTK, and canonical-name forwarder, but capture stayed black. Native Stop was not used while the fullscreen process was in that state; the exact bridge fallback and cleanup passed. `WinSavedGames` mapping was healthy. |
+| 1213750 | Fight Crab | win32 | P | F | P | P | Fresh 597 MB depot. A stale external-library app index initially hid the install; the manifest scan fallback fixed discovery. Unity failed to create its D3D11 device, but native Stop and prefix cleanup passed. `WinAppDataLocalLow` mapping was healthy. |
+| 716490 | EXAPUNKS | win64 | P | I | P | P | Fresh 634 MB x64 depot. The process loaded the x64 lsteamclient sidecar, native Steam client, overlay, GPTK, and staged forwarder; native Stop returned to Play and cleanup passed. Cloud `gameinstall` mapping was healthy; no renderer pass is claimed from process evidence alone. |
+| 448510 | Overcooked | win64 | P | I | P | P | Native Steam first reproduced `OS Error 0` before mapping. The mapped Ullage launch reached a live Wine process with the bridge overlay loaded, native Stop returned to Play, and cleanup passed. `WinAppDataLocalLow` mapping was healthy; no renderer pass is claimed. |
+| 1562430 | DREDGE | win32 | P | F | P | P | Fresh 744 MB depot. Ullage reached Running and native Stop returned to Play with a clean prefix, but the available capture showed no usable game surface and the game process did not expose lsteamclient/overlay handles. `WinAppDataLocalLow` mapping was healthy. |
+| 508980 | Crashday Redline Edition | win32 | P | I | P | P | Fresh 521 MB depot. The game process loaded GameOverlay, both lsteamclient sides, native Steam client, and `steam_api.dll`; native Stop and cleanup passed. `WinAppData` mapping was healthy; no renderer pass is claimed from process evidence alone. |
+| 207140 | SpeedRunners | win32 | P | F | P | P | Fresh 669 MB depot. Ullage reached Running and native Stop returned to Play with a clean prefix, but no usable game surface or game-loaded lsteamclient/overlay handle was observed. Cloud metadata had no supported Windows root. |
 
 ## Per-title evidence
 

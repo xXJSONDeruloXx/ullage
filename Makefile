@@ -21,6 +21,7 @@ check:
 	@$(PYTHON3) bin/ullage-mapping.py --help >/dev/null
 	@$(PYTHON3) tests/test_appinfo.py
 	@$(PYTHON3) tests/test_cli.py
+	@$(PYTHON3) tests/test_runtime.py
 	@$(PYTHON3) tests/test_mapping.py
 	@$(PYTHON3) tests/test_paths.py
 	@$(PYTHON3) tests/test_reap.py

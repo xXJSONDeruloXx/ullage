@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import shutil
 import struct
 import subprocess
@@ -35,9 +36,18 @@ def write_pe(path):
     path.write_bytes(data)
 
 
-def run(command):
+def run(command, env=None):
+    command_environment = None
+    if env:
+        command_environment = dict(os.environ)
+        command_environment.update(env)
     result = subprocess.run(
-        command, cwd=ROOT, capture_output=True, text=True, check=False
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=command_environment,
     )
     if result.returncode:
         raise AssertionError(
@@ -126,7 +136,15 @@ def install(case):
         "--state-dir",
         str(case["state"]),
     ]
-    run(command)
+    run(
+        command,
+        env={
+            "ULLAGE_RUNTIME_PACKAGE_ID": "test-package",
+            "ULLAGE_RUNTIME_PACKAGE_VERSION": "test-1",
+            "ULLAGE_RUNTIME_MANIFEST": str(case["state"] / "runtime-manifest.json"),
+            "ULLAGE_RUNTIME_MANIFEST_SHA256": "a" * 64,
+        },
+    )
 
 
 def remove(case):
@@ -155,6 +173,12 @@ def exercise(
         install(case)
 
         state_file = case["state"] / "config" / "games" / "42.launch.json"
+        config_text = (case["state"] / "config" / "games" / "42.conf").read_text(
+            encoding="utf-8"
+        )
+        assert "RUNTIME_PACKAGE_ID='test-package'" in config_text
+        assert "RUNTIME_PACKAGE_VERSION='test-1'" in config_text
+        assert "RUNTIME_MANIFEST_SHA256='" + "a" * 64 + "'" in config_text
         state = json.loads(state_file.read_text(encoding="utf-8"))
         assert [entry["entry"] for entry in state["entries"]] == expected_launchers
         assert [entry["entry"] for entry in state.get("disabled", [])] == list(

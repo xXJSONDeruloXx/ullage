@@ -47,6 +47,7 @@ regenerated from recorded state.
 | Local launch mapping and guarded cleanup | Ullage |
 | Wine/GPTK process and prefix boundary | Ullage bridge |
 | Windows API translation and Steamworks handoff | Wine/GPTK + lsteamclient |
+| Versioned bridge artifact verification and staging | Ullage runtime package layer |
 
 Generated launchers, config, backups, prefixes, and logs are runtime state
 under `~/.ullage` by default. The repository is source and provenance, not a
@@ -88,7 +89,9 @@ The state root is separate from the checkout:
 ~~~text
 repository/                 source, tests, runtime contract
 ~/.ullage/                  launchers, configs, backups, prefixes, logs,
-                            sessions/<appid>/last.json receipts
+                            sessions/<appid>/last.json receipts,
+                            runtimes/<id>/<version>/ verified bridge packages,
+                            runtimes/current.json active package pointer
 Steam/appcache/appinfo.vdf  native Steam's local control-plane cache
 ~~~
 
@@ -100,6 +103,8 @@ Steam/appcache/appinfo.vdf  native Steam's local control-plane cache
   mutation facade for machine callers.
 * `bin/ullage-mapping.py` — status and conservative repair.
 * `bin/ullage-bridge` — hot launch and process supervision boundary.
+* `bin/ullage-runtime.py` — manifest verification, package staging, and
+  runtime provenance.
 * `bin/ullage-reap` — prefix-scoped cleanup.
 * `bin/ullage-appinfo.py` — dependency-free binary VDF editing.
 * `bin/ullage-path.py` — install-root-relative launcher path calculation.
@@ -116,6 +121,8 @@ remaining gaps.
 ## Deliberate non-goals
 
 Ullage does not become a replacement Steam client, compatibility manager, GUI,
-Wine/Proton fork, or browser/token Cloud transport. Upstream-sensitive
+Wine/Proton fork, full runtime distribution, or browser/token Cloud transport.
+Its optional package is limited to the small bridge artifacts needed at the
+launch boundary. Upstream-sensitive
 Wine/Proton portability work belongs in
 [ullage-patches](https://github.com/xXJSONDeruloXx/ullage-patches).

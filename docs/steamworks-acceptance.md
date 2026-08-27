@@ -58,6 +58,28 @@ the acceptance criterion.
 | 219150 | Hotline Miami | P | F | I | I (`WinMyDocuments` mapping; no save round trip) | P | Native Play launched the 32-bit Windows launcher surface, but its handoff produced no game surface. Direct explicit-entry trials with `HotlineMiami_Original.exe` and `HotlineGL.exe` also failed to render; the OpenGL trial exited with status 53. Native Stop returned the launcher and original-binary attempts to Play with no selected-prefix Wine processes. This remains a title/runtime boundary, not an Ullage mapping or supervision failure. |
 | 442070 | Drawful 2 | P | F | P (direct probe) | not configured | P | The valid standalone entry launched through the repaired mapping; the absent `launch_mp.bat` option was hidden with `ullage-disabled`. The shipped game then showed `Application load error 3:0000065432` before a usable surface. A separate x64 probe through the same prefix/runtime passed SteamAPI initialization, identity, ownership, stats enumeration, and shutdown; native Stop cleanup passed. |
 
+### Latest ten-title pass
+
+This bounded pass was performed after the matrix above and is intentionally
+separated from the direct feature probe. It validates native Steam transport,
+the Cloud mapper where metadata provided a supported Windows root, and the
+Stop/cleanup boundary across fresh 32-bit and 64-bit installs. A renderer `I`
+or `F` does not weaken a transport result, and a loaded overlay does not prove
+that the shipped game called every Steamworks interface.
+
+| AppID | Title | Steamworks transport | Cloud | Lifecycle | Evidence |
+| ---: | --- | :---: | --- | :---: | --- |
+| 70 | Half-Life | P; i386 lsteamclient and overlay observed | P; native sync/prompt and `gameinstall` mapping | P | Native Play/Stop passed; no changed-save round trip claimed. |
+| 312990 | Expendabros | I; i386 lsteamclient and overlay loaded | —; unsupported Windows root | I | Black capture required bridge termination fallback; no native Stop transition claimed. |
+| 345820 | Shantae | I; bridge reached the title before Wine status 3 | —; unsupported Windows root | — | Exited before a Stop was needed. |
+| 1114290 | Windjammers 2 | P; x64 lsteamclient, overlay, GPTK, and forwarder observed | P; `WinSavedGames` | I | Fullscreen capture stayed black; exact bridge fallback completed. |
+| 1213750 | Fight Crab | I; no game-loaded Steamworks handles after graphics initialization failed | P; `WinAppDataLocalLow` | P | Native Stop and clean prefix passed despite the D3D11 device failure. |
+| 716490 | EXAPUNKS | P; x64 sidecar, overlay, native Steam client, and forwarder observed | P; `gameinstall` | P | Native Stop returned to Play; no shipped-game API trace claimed. |
+| 448510 | Overcooked | P; bridge overlay loaded in the mapped run | P; `WinAppDataLocalLow` | P | Initial native `OS Error 0` was resolved at the Ullage mapping boundary. |
+| 1562430 | DREDGE | I; game process did not expose bridge handles | P; `WinAppDataLocalLow` | P | Running, native Stop, and prefix cleanup passed without a renderer surface. |
+| 508980 | Crashday Redline Edition | P; overlay, both lsteamclient sides, native Steam client, and `steam_api.dll` observed | P; `WinAppData` | P | Native Stop and uninstall/removal passed. |
+| 207140 | SpeedRunners | I; bridge overlay only, no game-loaded lsteamclient handle | —; unsupported Windows root | P | Native Stop returned to Play and prefix cleanup passed. |
+
 The `P` lifecycle result means native Steam emitted an `App Running` transition,
 the bridge logged `wine_exit`, and the client returned the AppID to its
 installed state. It is not a claim that the game completed a meaningful play

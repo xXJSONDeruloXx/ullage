@@ -1,9 +1,10 @@
 # Runtime contract
 
-Ullage deliberately does not vendor Wine, GPTK/D3DMetal, native Steam, or
-Proton/Wine-derived lsteamclient binaries. Those components have their own
-release cadence and licensing. Point the installer at the runtime selected by
-the host setup.
+Ullage deliberately does not vendor Wine, GPTK/D3DMetal, native Steam, or a
+full Proton distribution. Those components have their own release cadence and
+licensing. The small lsteamclient bridge can now be installed as a versioned,
+checksum-verified package; Wine and GPTK remain host-provided components
+selected by the host setup.
 
 The current bridge expects:
 
@@ -43,6 +44,33 @@ repository. Ullage does not fork or vendor that source tree.
 The native Steam client remains the source of steamclient.dylib, loader
 environment, IPC descriptors, user/session state, and overlay services. Ullage
 only passes those through the Wine launch boundary.
+
+## Versioned bridge package
+
+`ullage-patches` produces a package containing the four bridge files listed
+above and a `manifest.json` with the package version, exact source commit,
+file sizes, and SHA-256 digests. It intentionally does not contain Wine,
+GPTK/D3DMetal, native Steam, or a prefix. This keeps the downloaded artifact
+small while making the manually assembled bridge reproducible and auditable.
+
+After extracting a package, install it with the stable CLI:
+
+```sh
+bin/ullagectl runtime install \
+  --manifest /path/to/ullage-bridge-runtime-VERSION/manifest.json
+bin/ullagectl runtime verify
+```
+
+The installer verifies every artifact before copying, copies into a temporary
+versioned directory under `~/.ullage/runtimes`, verifies the copy again, and
+only then atomically updates `~/.ullage/runtimes/current.json`. The active
+package is preferred over legacy manually assembled bridge roots. A tampered
+or incomplete active package makes `doctor`, `runtime verify`, and future
+mapping installs fail with the manifest path and the affected artifact.
+
+`runtime list` exposes both discovered host runtimes and installed package
+provenance. A mapping records the package ID, version, manifest path, and
+manifest digest; the bridge carries the same values into each session receipt.
 
 ## Renderer component overlays
 

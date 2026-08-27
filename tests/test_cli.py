@@ -43,6 +43,10 @@ def make_fixture():
     install = steam / "steamapps/common/Example"
     install.mkdir(parents=True)
     (install / "Game.exe").write_bytes(b"MZ\0\0")
+    external = root / "external-library"
+    external_install = external / "steamapps/common/External"
+    external_install.mkdir(parents=True)
+    (external_install / "External.exe").write_bytes(b"MZ\0\0")
     (steam / "steamapps").mkdir(exist_ok=True)
     (steam / "steamapps/appmanifest_42.acf").write_text(
         '"AppState"\n{\n'
@@ -53,6 +57,15 @@ def make_fixture():
         '}\n',
         encoding="utf-8",
     )
+    (external / "steamapps/appmanifest_43.acf").write_text(
+        '"AppState"\n{\n'
+        '    "appid" "43"\n'
+        '    "name" "External Game"\n'
+        '    "StateFlags" "4"\n'
+        '    "installdir" "External"\n'
+        '}\n',
+        encoding="utf-8",
+    )
     (steam / "steamapps/libraryfolders.vdf").write_text(
         '"libraryfolders"\n{\n'
         '\t"0"\n\t{\n'
@@ -60,7 +73,7 @@ def make_fixture():
         '\t\t"apps"\n\t\t{\n\t\t\t"42"\t\t"1"\n\t\t}\n'
         '\t}\n'
         '\t"1"\n\t{\n'
-        f'\t\t"path"\t\t"{root / "unavailable-library"}"\n'
+        f'\t\t"path"\t\t"{external}"\n'
         '\t\t"apps"\n\t\t{\n\t\t}\n'
         '\t}\n}\n',
         encoding="utf-8",
@@ -84,9 +97,15 @@ def make_fixture():
             "config": {"launch": {"0": {"executable": "Game.exe"}}},
         }
     }
+    external_sections = {
+        "appinfo": {
+            "common": {"name": "External Game", "type": "game", "oslist": "windows"},
+            "config": {"launch": {"0": {"executable": "External.exe"}}},
+        }
+    }
     version = APPINFO_HELPERS.MODULE.APPINFO_28
     records = []
-    for appid, record_sections in ((42, sections), (77, not_installed_sections)):
+    for appid, record_sections in ((42, sections), (43, external_sections), (77, not_installed_sections)):
         encoded = APPINFO_HELPERS.encode_v28_dict(record_sections)
         records.append(
             struct.pack(
@@ -203,17 +222,21 @@ def main():
         assert code == 0
         assert capabilities["api_version"] == 1
         assert "multi_launch" in capabilities["capabilities"]
+        assert "runtime_packages" in capabilities["capabilities"]
 
         code, library = run_cli("library", *context)
         assert code == 0
         assert library["api_version"] == 1
-        assert library["count"] == 1
-        game = library["games"][0]
+        assert library["count"] == 2
+        game = next(item for item in library["games"] if item["appid"] == 42)
         assert (game["appid"], game["state"]) == (42, "available")
         assert game["windows_depot_present"]
         assert [option["entry"] for option in game["launch_options"]] == ["0", "1"]
         assert game["launch_options"][0]["usable"]
         assert not game["launch_options"][1]["usable"]
+        external_game = next(item for item in library["games"] if item["appid"] == 43)
+        assert external_game["install_dir"].endswith("/external-library/steamapps/common/External")
+        assert external_game["launch_options"][0]["usable"]
         assert library["not_installed_count"] == 1
         assert library["not_installed"][0]["state"] == "not_installed"
         assert library["not_installed"][0]["appid"] == 77

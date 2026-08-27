@@ -578,3 +578,75 @@ the already-loaded `appcache/appinfo.vdf` records for a responsive cached
 catalog, marks those records `not_installed`, and documents that the cache is
 not proof of ownership. The search field is therefore part of the minimal
 launcher surface rather than an optional diagnostic.
+
+### 14. Ten-title new-machine validation and cleanup
+
+The next-machine pass installed, mapped, launched, stopped, and removed ten
+small entitled Windows depots through native Steam: Half-Life (70),
+Expendabros (312990), Shantae (345820), Windjammers 2 (1114290), Fight Crab
+(1213750), EXAPUNKS (716490), Overcooked (448510), DREDGE (1562430), Crashday
+Redline Edition (508980), and SpeedRunners (207140). All ten reached the
+Ullage bridge; native Stop returned Steam to Play for the titles where a game
+surface or process remained; every mapping was removed after uninstall.
+
+The run exposed several setup issues that are now part of the generic
+acceptance contract:
+
+* Steam's external-library `apps` index was empty immediately after a fresh
+  install, so Fight Crab initially appeared not installed. The authoritative
+  `appmanifest_*.acf` files are now scanned under every configured library
+  root as a fallback.
+* GameHub's x64 prefix initially exposed `steamclient64.dll` as a stock
+  symlink. The canonical-name forwarder must be a regular file matching the
+  bridge artifact; the original symlink was preserved and restored after the
+  x64 trials.
+* `--cloud-native` correctly refused titles with no supported Windows Cloud
+  root. Those installs were retried without Cloud mapping rather than forcing
+  an invented path. Half-Life's native Cloud sync and prompt were observed;
+  no changed-save round trip is claimed by this run.
+* Overcooked first reproduced Steam's native `OS Error 0` before mapping, then
+  launched through Ullage after the mapping was installed. DREDGE and
+  SpeedRunners reached Running but did not expose a visible game surface in
+  the available capture; process, stop, and prefix-cleanliness evidence was
+  still recorded separately from renderer support.
+* The X-Wing install flow presented a Disney EULA. It was canceled rather than
+  accepting a legal agreement without an action-time confirmation, and
+  Crashday was used as the replacement tenth title.
+* Half-Life exposed a Steam cleanup race: quitting while native uninstall was
+  still in `Files Missing`/`Uninstalling` caused Steam to queue verification and
+  redownload on the next launch. Recovery is to stop Steam, preserve the exact
+  AppID manifest and residue in an external archive, remove only that AppID's
+  metadata, and verify the library before restarting. Other library entries
+  must not be swept as part of this recovery.
+
+The internal disk started near exhaustion at roughly 1--2 GB free. Disposable
+Steam caches, ignored build outputs, old Downloads artifacts, Docker's unused
+builder cache, and re-downloadable language/app caches were removed or moved
+to `/Volumes/NO NAME` archives. This recovered roughly 10 GB of headroom and
+left about 12 GB free. Project source, active toolchains, Android/Notion data,
+Codex state, and Docker images were retained; the desired 20 GB target was
+not pursued by deleting data with unclear ownership.
+
+### 15. Reproducible bridge package
+
+The manually assembled bridge is now a small package produced by
+`ullage-patches/scripts/package-bridge-runtime.sh`. The package contains
+only the x86_64 Unix sidecar, i386 and x86_64 Windows sidecars, and the x64
+canonical-name forwarder. Its manifest records the package version, artifact
+sizes and SHA-256 digests, the patch repository commit, and the patch-manifest
+digest. It does not require or distribute a full Proton runtime.
+
+`ullagectl runtime install` verifies the manifest before copying, stages a
+versioned directory under `~/.ullage/runtimes`, verifies the copy, and then
+updates the active pointer atomically. Mapping configs and session receipts
+carry the package ID, version, manifest path, and digest. The packager
+normalizes archive ordering, ownership, modes, and timestamps; two independent
+runs of `2026.08.26-3` produced the same SHA-256:
+`9413215f4a72d19adf2fe2024d16b4e7755542b34db94ea694005ea580212a4b`.
+
+The package was installed and verified on this Mac, then tested against the
+known-good TIS-100 matrix row (AppID `370360`). The game process loaded the
+packaged x86 lsteamclient and Steam API, native Steam showed Running and the
+Stop confirmation returned it to Play, and the receipt recorded a clean Wine
+prefix. The release is therefore eligible for publication as tag
+`runtime-macos-2026-08-26-3` in `ullage-patches`.

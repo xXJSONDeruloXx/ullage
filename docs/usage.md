@@ -37,6 +37,23 @@ quit because it edits only a temporary appcache:
 make integration
 ~~~
 
+## Install the verified bridge package
+
+Download and extract the matching bridge release from
+[`ullage-patches`](https://github.com/xXJSONDeruloXx/ullage-patches/releases),
+then let Ullage verify and stage its manifest:
+
+~~~sh
+bin/ullagectl runtime install \
+  --manifest /path/to/ullage-bridge-runtime-VERSION/manifest.json --json
+bin/ullagectl runtime verify --json
+~~~
+
+Only the four small lsteamclient/forwarder artifacts are staged under
+`~/.ullage/runtimes`; Wine, GPTK/D3DMetal, native Steam, and the prefix remain
+host-provided. `doctor` reports the package digest and the exact remediation
+if an artifact is missing or changed.
+
 ## Machine-facing commands
 
 For discovery, setup screens, and diagnostics, use the versioned JSON facade:

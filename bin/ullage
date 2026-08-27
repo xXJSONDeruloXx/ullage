@@ -33,6 +33,7 @@ CAPABILITIES = [
     "library_catalog",
     "steam_stop_watch",
     "structured_diagnostics",
+    "runtime_packages",
 ]
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -52,6 +53,7 @@ def load_module(name: str, filename: str):
 APPINFO = load_module("ullage_appinfo_cli", "ullage-appinfo.py")
 MAPPING = load_module("ullage_mapping_cli", "ullage-mapping.py")
 CLOUD = load_module("ullage_cloud_cli", "ullage-cloud-native.py")
+RUNTIME = load_module("ullage_runtime_cli", "ullage-runtime.py")
 
 
 class CLIError(Exception):
@@ -72,6 +74,8 @@ RECOVERABLE_ERRORS = {
     "mapping_stale",
     "runtime_missing",
     "runtime_incomplete",
+    "runtime_manifest_invalid",
+    "runtime_artifact_missing",
     "prefix_missing",
     "forwarder_missing",
 }
@@ -99,6 +103,10 @@ def error_code(message: str, default: str = "command_failed") -> str:
         return "prefix_missing"
     if "steamclient64.dll" in text or "forwarder" in text:
         return "forwarder_missing"
+    if "runtime manifest" in text or "runtime package" in text:
+        return "runtime_manifest_invalid"
+    if "artifact" in text and ("missing" in text or "verification" in text or "mismatch" in text):
+        return "runtime_artifact_missing"
     if any(value in text for value in ("wine", "gptk", "lsteamclient", "sandboxfs")):
         return "runtime_incomplete"
     if "cloud" in text and ("unsupported" in text or "not supported" in text):
@@ -321,7 +329,9 @@ def bridge_root_for(args: argparse.Namespace, state_root: Path) -> Path | None:
     from_environment = os.environ.get("ULLAGE_BRIDGE_ROOT")
     if from_environment:
         return expand(from_environment)
+    packaged = RUNTIME.current_bridge_root(state_root)
     candidates = [
+        packaged,
         state_root / "runtime/lsteamclient",
         REPO_ROOT / "runtime/lsteamclient",
         newest_directory(REPO_ROOT.parent / "ullage-runtime-work", "ullage-bridge-artifacts-"),
@@ -475,7 +485,7 @@ def configured_runtime_profile(args: argparse.Namespace, state_root: Path) -> di
     }
 
 
-def runtime_checks(profile: dict) -> list[dict]:
+def runtime_checks(profile: dict, state_root: Path | None = None) -> list[dict]:
     wine_root = expand(profile["wine_root"]) if profile.get("wine_root") else None
     gptk_root = expand(profile["gptk_root"]) if profile.get("gptk_root") else None
     bridge_root = expand(profile["bridge_root"]) if profile.get("bridge_root") else None
@@ -503,18 +513,35 @@ def runtime_checks(profile: dict) -> list[dict]:
             check_record("steamclient64-forwarder", "steamclient64 forwarder", bridge_root / "x86_64-windows/steamclient64.dll" if bridge_root else None, remediation="Install the canonical-name x64 Steam client forwarder."),
         ]
     )
+    if bridge_root and state_root:
+        package = RUNTIME.package_for_bridge_root(bridge_root, state_root)
+        if package:
+            checks.append(
+                check_record(
+                    "runtime-package",
+                    "Verified Ullage bridge package",
+                    Path(package["manifest"]),
+                    remediation=package.get("error") or "Install or repair the active runtime package.",
+                )
+            )
+            checks[-1]["status"] = "ready" if package.get("ready") else "missing"
     if profile.get("prefix"):
         checks.append(check_record("prefix", "Wine prefix", expand(profile["prefix"]), remediation="Choose an initialized Wine prefix.", directory=True))
         checks.append(check_record("prefix-system-reg", "Wine prefix registry", expand(profile["prefix"]) / "system.reg", remediation="Initialize the selected Wine prefix."))
     return checks
 
 
-def decorate_runtime(profile: dict) -> dict:
-    checks = runtime_checks(profile)
+def decorate_runtime(profile: dict, state_root: Path) -> dict:
+    checks = runtime_checks(profile, state_root)
     required = [item for item in checks if item["required"]]
     result = dict(profile)
     result.pop("last_used", None)
     result.pop("default", None)
+    bridge_root = expand(profile["bridge_root"]) if profile.get("bridge_root") else None
+    if bridge_root:
+        package = RUNTIME.package_for_bridge_root(bridge_root, state_root)
+        if package:
+            result["runtime_package"] = package
     result["checks"] = checks
     result["status"] = "ready" if all(item["status"] == "ready" for item in required) else "incomplete"
     return result
@@ -524,8 +551,8 @@ def runtime_profiles(args: argparse.Namespace, state_root: Path) -> list[dict]:
     configured = configured_runtime_profile(args, state_root)
     profiles = gamehub_runtime_profiles(args, state_root)
     if configured:
-        return [decorate_runtime(configured), *[decorate_runtime(profile) for profile in profiles]]
-    profiles = [decorate_runtime(profile) for profile in profiles]
+        return [decorate_runtime(configured, state_root), *[decorate_runtime(profile, state_root) for profile in profiles]]
+    profiles = [decorate_runtime(profile, state_root) for profile in profiles]
     profiles.sort(key=lambda profile: (profile["status"] == "ready", profile["id"]), reverse=True)
     return profiles
 
@@ -577,7 +604,11 @@ def check_record(
 def runtime_status(args: argparse.Namespace, state_root: Path) -> dict:
     profiles = runtime_profiles(args, state_root)
     selected = selected_runtime_profile(args, state_root, profiles)
-    checks = selected["checks"] if selected else runtime_checks({})
+    checks = selected["checks"] if selected else runtime_checks({}, state_root)
+    package = RUNTIME.current_package(state_root)
+    ready = bool(selected) and all(item["status"] == "ready" for item in checks if item["required"])
+    if package and not package.get("ready"):
+        ready = False
     return {
         "selected": selected["id"] if selected else None,
         "profiles": profiles,
@@ -587,7 +618,9 @@ def runtime_status(args: argparse.Namespace, state_root: Path) -> dict:
         "bridge_root": selected.get("bridge_root") if selected else None,
         "prefix": selected.get("prefix") if selected else None,
         "checks": checks,
-        "ready": bool(selected) and all(item["status"] == "ready" for item in checks if item["required"]),
+        "current_package": package,
+        "packages": RUNTIME.list_installed(state_root),
+        "ready": ready,
     }
 
 
@@ -610,6 +643,18 @@ def system_status(args: argparse.Namespace) -> dict:
     )
     depot_check["status"] = "ready" if steam["windows_depot_configured"] else "missing"
     checks = [steam_check, depot_check, *runtime["checks"]]
+    package = runtime.get("current_package")
+    if package and not any(item["id"] == "runtime-package" for item in checks):
+        checks.append(
+            {
+                "id": "runtime-package",
+                "label": "Verified Ullage bridge package",
+                "status": "ready" if package.get("ready") else "missing",
+                "required": True,
+                "path": package.get("manifest"),
+                "remediation": package.get("error") or "Install or repair the active runtime package.",
+            }
+        )
     return {
         "status": "ready" if all(item["status"] == "ready" for item in checks if item["required"]) else "needs_setup",
         "requires_steam_stopped": True,
@@ -877,6 +922,18 @@ def game_record(
     windows_depot_present = any(option.get("path") for option in options)
     native = native_variant_present(appinfo, appid, game["install_dir"]) if appinfo else False
     mapping_status = mapping.get("status", "unavailable")
+    runtime_package = None
+    if any(config.get(name) for name in (
+        "RUNTIME_PACKAGE_ID",
+        "RUNTIME_PACKAGE_VERSION",
+        "RUNTIME_MANIFEST_SHA256",
+    )):
+        runtime_package = {
+            "runtime_id": config.get("RUNTIME_PACKAGE_ID") or None,
+            "version": config.get("RUNTIME_PACKAGE_VERSION") or None,
+            "manifest": config.get("RUNTIME_MANIFEST") or None,
+            "manifest_sha256": config.get("RUNTIME_MANIFEST_SHA256") or None,
+        }
     if mapping_status == "healthy":
         availability = "ready" if usable else "broken"
     elif mapping_status == "missing":
@@ -908,6 +965,7 @@ def game_record(
             "architecture": config.get("ARCH"),
             "transport": "preserved" if config.get("PRESERVE_STEAM_TRANSPORT") == "1" else "clean",
             "runtime_id": config.get("RUNTIME_ID"),
+            "runtime_package": runtime_package,
         },
         "cloud": cloud_record(appinfo, appid, config, state_root) if appinfo else {
             "mode": "not_configured",
@@ -990,7 +1048,13 @@ def installed_games(steam_root: Path) -> list[dict]:
         document = CLOUD._read_vdf_dict(library_file)
     except (OSError, ValueError):
         document = {}
-    folders = document.get("libraryfolders", {}) if isinstance(document, dict) else {}
+    # ``_read_vdf_dict`` returns the body after consuming the top-level key,
+    # while a few callers/tests may provide an already-wrapped document.
+    # Accept both shapes so secondary Steam libraries are not silently omitted.
+    if isinstance(document, dict):
+        folders = document.get("libraryfolders", document)
+    else:
+        folders = {}
     manifest_paths: list[tuple[Path, Path]] = []
     if isinstance(folders, dict):
         for folder in folders.values():
@@ -1003,6 +1067,15 @@ def installed_games(steam_root: Path) -> list[dict]:
             for appid in apps:
                 if str(appid).isdigit():
                     manifest_paths.append((root / "steamapps" / f"appmanifest_{appid}.acf", root))
+            # Steam can lag updating the library's app index after a download
+            # or uninstall. The manifests under the configured root are the
+            # authoritative installed-game list, so include them as a
+            # fallback even when the ``apps`` map is stale or empty.
+            try:
+                manifests = sorted((root / "steamapps").glob("appmanifest_*.acf"))
+            except OSError:
+                manifests = []
+            manifest_paths.extend((manifest, root) for manifest in manifests)
     if not manifest_paths:
         # Test fixtures and older clients may omit libraryfolders.vdf. Only
         # scan the configured Steam root in that fallback, never every volume.
@@ -1373,6 +1446,16 @@ def command_install(args: argparse.Namespace) -> int:
     try:
         install_environment = os.environ.copy()
         install_environment["ULLAGE_RUNTIME_ID"] = profile["id"]
+        package = profile.get("runtime_package") or {}
+        for environment_name, package_name in (
+            ("ULLAGE_RUNTIME_PACKAGE_ID", "runtime_id"),
+            ("ULLAGE_RUNTIME_PACKAGE_VERSION", "version"),
+            ("ULLAGE_RUNTIME_MANIFEST", "manifest"),
+            ("ULLAGE_RUNTIME_MANIFEST_SHA256", "manifest_sha256"),
+        ):
+            value = package.get(package_name)
+            if value:
+                install_environment[environment_name] = str(value)
         result = run(
             [str(SCRIPT_DIR / "ullage-install"), *install_arguments(args)],
             env=install_environment,
@@ -1464,8 +1547,43 @@ def command_remove(args: argparse.Namespace) -> int:
 
 def command_runtime(args: argparse.Namespace) -> int:
     state_root = expand(args.state_dir)
+    runtime_command = getattr(args, "runtime_command", None)
+    if runtime_command == "install":
+        try:
+            package = RUNTIME.install_manifest(
+                args.manifest,
+                state_root,
+                args.source_root,
+            )
+        except (OSError, RUNTIME.RuntimePackageError) as exc:
+            return failure("runtime install", str(exc), "runtime_manifest_invalid")
+        return output("runtime install", {"package": package})
+    if runtime_command == "verify":
+        package = RUNTIME.verify_installed(state_root, args.runtime_id, args.version)
+        if package.get("ready"):
+            return output("runtime verify", {"package": package})
+        return output(
+            "runtime verify",
+            {
+                "package": package,
+                "error": {
+                    "code": "runtime_artifact_missing" if package.get("status") == "incomplete" else "runtime_manifest_invalid",
+                    "message": package.get("error") or "runtime package is not ready",
+                    "recoverable": True,
+                },
+            },
+            ok=False,
+        )
     profiles = runtime_profiles(args, state_root)
-    return output("runtime list", {"runtimes": profiles, "count": len(profiles)})
+    return output(
+        "runtime list",
+        {
+            "runtimes": profiles,
+            "count": len(profiles),
+            "current_package": RUNTIME.current_package(state_root),
+            "packages": RUNTIME.list_installed(state_root),
+        },
+    )
 
 
 def command_capabilities(args: argparse.Namespace) -> int:
@@ -1582,6 +1700,18 @@ def parser() -> argparse.ArgumentParser:
     runtime_list = runtime_commands.add_parser("list", help="list discovered runtimes")
     add_context(runtime_list)
     add_runtime_options(runtime_list)
+    runtime_install = runtime_commands.add_parser(
+        "install", help="verify and stage a versioned bridge runtime package"
+    )
+    add_context(runtime_install)
+    runtime_install.add_argument("--manifest", required=True, help="package manifest JSON")
+    runtime_install.add_argument("--source-root", help="artifact root (defaults to manifest artifact_root)")
+    runtime_verify = runtime_commands.add_parser(
+        "verify", help="verify the active or selected installed bridge package"
+    )
+    add_context(runtime_verify)
+    runtime_verify.add_argument("--runtime-id")
+    runtime_verify.add_argument("--version")
     runtime_alias = commands.add_parser("runtime-list", help="list discovered runtimes")
     add_context(runtime_alias)
     add_runtime_options(runtime_alias)

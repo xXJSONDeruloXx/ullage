@@ -46,6 +46,7 @@ Read-only commands:
 bin/ullagectl capabilities --json
 bin/ullagectl doctor --json
 bin/ullagectl runtime list --json
+bin/ullagectl runtime verify --json
 bin/ullagectl library --json
 bin/ullagectl inspect APPID --json
 bin/ullagectl diagnose APPID --json
@@ -135,6 +136,23 @@ needed by a UI without exposing provider-specific conventions:
 The object also contains checks and optional SandboxFS paths when GameHub has
 them. A future provider can implement the same object without changing the
 GUI.
+
+`runtime list` also returns `packages` and `current_package`. A package is the
+small, versioned lsteamclient bridge staged by Ullage; Wine, GPTK/D3DMetal,
+native Steam, and the prefix remain host runtime inputs. Install and verify a
+package with:
+
+~~~sh
+bin/ullagectl runtime install --manifest PATH/manifest.json --json
+bin/ullagectl runtime verify --json
+bin/ullagectl runtime verify --runtime-id ID --version VERSION --json
+~~~
+
+`runtime install` verifies every manifest digest and size before staging. The
+copy is verified again before `current.json` is atomically updated. The
+package object exposes `runtime_id`, `version`, `manifest_sha256`,
+`bridge_root`, per-artifact status, and source provenance. A failed
+verification names the manifest or artifact that needs to be replaced.
 
 ## Diagnostics
 
