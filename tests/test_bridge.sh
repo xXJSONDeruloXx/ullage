@@ -44,6 +44,8 @@ write_script "$TEMP_ROOT/wine" \
     'printf "%s\n" started >>"$WINEPREFIX/wine-events"' \
     'printf "%s\n" "dllpath=$WINEDLLPATH" >>"$WINEPREFIX/wine-events"' \
     'printf "%s\n" "dlloverrides=$WINEDLLOVERRIDES" >>"$WINEPREFIX/wine-events"' \
+    'printf "%s\n" "prefix_base=${WINEPREFIX_BASE-unset}" >>"$WINEPREFIX/wine-events"' \
+    'printf "%s\n" "wine_arch=${WINEARCH-unset}" >>"$WINEPREFIX/wine-events"' \
     'mode=$(cat "$WINEPREFIX/wine-mode")' \
     'case "$mode" in' \
     '  slow-exit) /bin/sleep 1; exit 7 ;;' \
@@ -149,10 +151,38 @@ grep -F '"prefix_clean": true' "$CASE_RECEIPT" >/dev/null
 grep -F '"runtime_id": "test-package"' "$CASE_RECEIPT" >/dev/null
 grep -F '"version": "test-1"' "$CASE_RECEIPT" >/dev/null
 grep -F -- '-w:' "$CASE_PREFIX/wineserver-events" >/dev/null
+grep -F "dllpath=$CASE_BRIDGE_ROOT:" "$CASE_PREFIX/wine-events" >/dev/null
 [ ! -e "$CASE_LEGACY_CLOUD_MARKER" ] || {
     printf '%s\n' 'legacy Cloud hook unexpectedly ran' >&2
     exit 1
 }
+
+make_case direct-env slow-exit win64
+direct_base=$TEMP_ROOT/direct-env/base
+direct_manifest=$TEMP_ROOT/direct-env/sandboxfs.manifest
+direct_sandboxfs=$TEMP_ROOT/direct-env/libsandboxfs.dylib
+mkdir -p "$direct_base"
+: >"$direct_base/system.reg"
+: >"$direct_manifest"
+: >"$direct_sandboxfs"
+printf '%s\n' \
+    "WINEPREFIX_BASE_VALUE='$direct_base'" \
+    "WINE_ARCH_VALUE='win64'" \
+    "SANDBOXFS_LAYER_MANIFEST_VALUE='$direct_manifest'" \
+    "SANDBOXFS_LIB_PATH_VALUE='$direct_sandboxfs'" >>"$CASE_CONFIG"
+set +e
+FILE_CMD="$TEMP_ROOT/file64" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG"
+status=$?
+set -e
+[ "$status" -eq 7 ] || {
+    printf 'expected direct environment case exit 7, got %s\n' "$status" >&2
+    exit 1
+}
+grep -F "prefix_base=$direct_base" "$CASE_PREFIX/wine-events" >/dev/null
+grep -F 'wine_arch=win64' "$CASE_PREFIX/wine-events" >/dev/null
+grep -F "[ullage-bridge] dyld_insert_libraries=$direct_sandboxfs" "$CASE_LOG" >/dev/null
+grep -F "dllpath=$CASE_BRIDGE_ROOT:$TEMP_ROOT/direct-env/gptk/wine:$TEMP_ROOT/direct-env/wine/lib/wine" \
+    "$CASE_PREFIX/wine-events" >/dev/null
 
 make_case dllpath slow-exit
 mkdir "$CASE_PREFIX/override"

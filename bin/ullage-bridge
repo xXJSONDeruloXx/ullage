@@ -414,13 +414,10 @@ PATH_VALUE=/usr/bin:/bin:/usr/sbin:/sbin
 if [ -z "$WINE_DLLPATH_VALUE" ] && [ -n "${WINEDLLPATH_VALUE:-}" ]; then
     WINE_DLLPATH_VALUE=$WINEDLLPATH_VALUE
 fi
-if [ -n "$WINE_DLLPATH_VALUE" ]; then
-    WINEDLLPATH_VALUE=$WINE_DLLPATH_VALUE
-elif [ "$ARCH" = win64 ]; then
-    WINEDLLPATH_VALUE="$BRIDGE_ROOT/x86_64-windows:$BRIDGE_ROOT/x86_64-unix:$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine"
-else
-    WINEDLLPATH_VALUE="$BRIDGE_ROOT/i386-windows:$BRIDGE_ROOT/x86_64-unix:$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine"
-fi
+# Keep the package root first. Placing its architecture-specific Windows
+# directory ahead of the runtime paths makes x64 lsteamclient initialization
+# fail in the GameHub Wine environment before the game can render.
+WINEDLLPATH_VALUE=${WINE_DLLPATH_VALUE:-$BRIDGE_ROOT:$GPTK_ROOT/wine:$WINE_ROOT/lib/wine}
 DYLD_FALLBACK_LIBRARY_PATH_VALUE=${DYLD_FALLBACK_LIBRARY_PATH_VALUE:-$BRIDGE_ROOT/x86_64-unix:$GPTK_ROOT/external:$WINE_ROOT/lib:$WINE_ROOT/lib/wine/x86_64-unix}
 WINEDLLOVERRIDES_VALUE=${WINEDLLOVERRIDES_VALUE:-${WINEDLLOVERRIDES:-lsteamclient=b}}
 STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS"
@@ -774,6 +771,9 @@ launch_clean() {
         SANDBOXFS_LAYER_MANIFEST="$SANDBOXFS_LAYER_MANIFEST_VALUE" \
         SANDBOXFS_LIB_PATH="$SANDBOXFS_LIB_PATH_VALUE" \
         WINEENGINE_GPTK_DXGI_SPOOF_ENABLED=1 \
+        WINEPREFIX_BASE="$WINEPREFIX_BASE_VALUE" \
+        WINEARCH="$WINE_ARCH_VALUE" \
+        DYLD_INSERT_LIBRARIES="$DYLD_INSERT_LIBRARIES_VALUE" \
         SteamAppId="$APP_ID" \
         SteamGameId="$APP_ID" \
         SteamClientLaunch=1 \
@@ -781,17 +781,7 @@ launch_clean() {
         SteamPath="$STEAM_ROOT" \
         STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_COMPAT_CLIENT_INSTALL_PATH" \
         STEAM_COMPAT_DATA_PATH="$PREFIX" \
-        /bin/sh -c '
-            prefix_base=$1
-            wine_arch=$2
-            insert_libraries=$3
-            shift 3
-            if [ -n "$prefix_base" ]; then export WINEPREFIX_BASE="$prefix_base"; else unset WINEPREFIX_BASE; fi
-            if [ -n "$wine_arch" ]; then export WINEARCH="$wine_arch"; else unset WINEARCH; fi
-            if [ -n "$insert_libraries" ]; then export DYLD_INSERT_LIBRARIES="$insert_libraries"; else unset DYLD_INSERT_LIBRARIES; fi
-            exec "$@"
-        ' ullage-bridge-wine "$WINEPREFIX_BASE_VALUE" "$WINE_ARCH_VALUE" \
-            "$DYLD_INSERT_LIBRARIES_VALUE" "$WINE_BIN" "$GAME_EXE" "$@" \
+        "$WINE_BIN" "$GAME_EXE" "$@" \
             >>"$LOG_FILE" 2>&1 &
     WINE_CHILD_PID=$!
     trap forward_signal HUP INT TERM
@@ -828,7 +818,9 @@ launch_with_steam_transport() {
         STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_COMPAT_CLIENT_INSTALL_PATH" \
         STEAM_COMPAT_DATA_PATH="$PREFIX" \
         STEAM_DYLD_INSERT_LIBRARIES="$STEAM_DYLD_INSERT_LIBRARIES_VALUE" \
-        DYLD_INSERT_LIBRARIES= \
+        DYLD_INSERT_LIBRARIES="$DYLD_INSERT_LIBRARIES_VALUE" \
+        WINEPREFIX_BASE="$WINEPREFIX_BASE_VALUE" \
+        WINEARCH="$WINE_ARCH_VALUE" \
         SteamEnv="$STEAM_ENV_VALUE" \
         SteamAppUser="$STEAM_APP_USER_VALUE" \
         SteamUser="$STEAM_USER_VALUE" \
@@ -839,17 +831,7 @@ launch_with_steam_transport() {
         ENABLE_VK_LAYER_VALVE_steam_overlay_1="$ENABLE_VK_LAYER_STEAM_OVERLAY_VALUE" \
         SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD="$SDL_STEAM_GAMEPAD_VALUE" \
         SDL_GAMECONTROLLER_IGNORE_DEVICES="$SDL_IGNORE_DEVICES_VALUE" \
-        /bin/sh -c '
-            prefix_base=$1
-            wine_arch=$2
-            insert_libraries=$3
-            shift 3
-            if [ -n "$prefix_base" ]; then export WINEPREFIX_BASE="$prefix_base"; else unset WINEPREFIX_BASE; fi
-            if [ -n "$wine_arch" ]; then export WINEARCH="$wine_arch"; else unset WINEARCH; fi
-            if [ -n "$insert_libraries" ]; then export DYLD_INSERT_LIBRARIES="$insert_libraries"; else unset DYLD_INSERT_LIBRARIES; fi
-            exec "$@"
-        ' ullage-bridge-wine "$WINEPREFIX_BASE_VALUE" "$WINE_ARCH_VALUE" \
-            "$DYLD_INSERT_LIBRARIES_VALUE" "$WINE_BIN" "$GAME_EXE" "$@" \
+        "$WINE_BIN" "$GAME_EXE" "$@" \
             >>"$LOG_FILE" 2>&1 &
     WINE_CHILD_PID=$!
     trap forward_signal HUP INT TERM
