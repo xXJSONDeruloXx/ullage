@@ -413,6 +413,17 @@ Native Stop returned Steam to Play with `native_stop_observed=true`,
 residue. No shipped-game Steamworks feature or visible overlay interaction is
 claimed.
 
+Brain Storm: Tower Bombarde (AppID `669750`) supplied a fresh 6.71 MB win32
+control using the unchanged public package. The mapped native Play request
+reached Running, and the x86 Steam transport plus `gameoverlayui` were
+observed. The title exposed a hidden `LoadForm` and a 1x1 game window rather
+than a usable surface, so this is a transport/lifecycle control, not a
+renderer pass. Native Stop returned Steam to Play with
+`native_stop_observed=true`, `wine_exit=137`, and `prefix_clean=true`.
+Steam uninstalled the depot with `No Error`; after Steam quit, Ullage removed
+the mapping and left no depot residue. No supported Windows Cloud root,
+shipped-game Steamworks feature, or visible overlay interaction was claimed.
+
 The current-package Cloud fixture checks also exposed a test-harness boundary,
 not a mapper defect. Gravity Circuit's mapped `WinAppDataRoaming` tree was
 empty; a unique `.sav` fixture was present before native Play, but Steam's

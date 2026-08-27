@@ -1130,3 +1130,20 @@ with `wine_exit=137` and a clean prefix. Steam uninstall returned `No Error`
 and Ullage removed the mapping after Steam quit. The lesson is to distinguish
 title-owned first-run UI/input from Ullage mapping failures and keep such
 probes test-only.
+
+### 37. A tiny legacy title can validate transport without exposing a surface
+
+Brain Storm: Tower Bombarde (AppID `669750`) supplied a fresh 6.71 MB win32
+external-library control using the current public package `2026.08.26-3`.
+After mapping and restarting native Steam, Play reached Running and the x86
+Steam transport plus `gameoverlayui` were present. The Delphi/VCL title
+exposed only a hidden `LoadForm` and a 1x1 game window; no usable game surface
+appeared during the bounded run. This is a title renderer/UI boundary, not a
+missing runtime or failed mapping.
+
+Native Stop returned Steam to Play with `wine_exit=137` and a clean prefix.
+Steam uninstalled the depot with `No Error`, and Ullage removed the mapping
+after Steam quit. The onboarding lesson is that a successful Running/Stop
+receipt and loaded Steam transport can be recorded independently of a title
+surface; do not add a per-title input or renderer workaround without a
+reproducible bridge-level failure.
