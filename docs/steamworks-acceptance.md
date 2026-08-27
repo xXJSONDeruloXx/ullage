@@ -35,6 +35,7 @@ the acceptance criterion.
 | ---: | --- | --- | :---: | :---: | :---: | :---: | --- |
 | 8400 | Geometry Wars: Retro Evolved | P | P historically; latest repeats F | I | not configured | P | 32-bit path and overlay were visible in an earlier run; repeatability is an open renderer issue. |
 | 3480 | Peggle Deluxe | P | P | I; overlay observed | not configured | P | Strongest 32-bit legacy control; native Stop cleanup passed. |
+| 3590 | Plants vs. Zombies: Game of the Year | P | P | P; x86 lsteamclient and `gameoverlayui` observed | not configured | I | Fresh 48 MB Windows depot rendered its title screen through the public package. Fullscreen occlusion hid the Steam Helper Stop control; quitting Steam exercised the generic client-exit fallback and cleaned the prefix, but no AppID-scoped Stop event was claimed. |
 | 584400 | Sonic Mania | P | P | I; native lsteamclient observed | P (`WinAppDataLocal` + `SteamCloudDocuments`) | P | Fresh mixed-root mapping caused Steam to create `steam_autocloud.vdf` under the Wine prefix's Windows `Documents/Steam Cloud` path. |
 | 848350 | Katamari Damacy REROLL | P | P (forwarder staged) | P (x64 probe + native Play) | P (2 files) | P | Canonical-name `steamclient64.dll` forwarder removed the shared x64 SteamAPI stall; repeated Play/confirmed Stop/relaunch on 2026-08-25 returned cleanly to Play. |
 | 3784030 | RACCOON: Coin Pusher Roguelike | P | F (black surface) | I | P | P | Native Cloud changed-file upload round trip passed. |
@@ -190,6 +191,18 @@ receipt at `~/.ullage/sessions/370360/last.json` recorded `wine_exit=137`,
 Out of Date` before launch, and the full-display capture was occluded by the
 Codex window, so this run adds lifecycle evidence but no new Cloud or renderer
 claim.
+
+A fresh Plants vs. Zombies (AppID `3590`) Windows depot was downloaded to the
+external library and launched through the unchanged package on 2026-08-27. The
+title screen rendered, the x86 lsteamclient path loaded, and
+`gameoverlayui -gameid 3590` attached to the game process. The fullscreen game
+occluded the Steam Helper capture, so the native Stop button could not be
+reached from a fresh screenshot; quitting Steam instead exercised the generic
+client-exit fallback. The receipt recorded `steam_client_exit_observed=true`,
+`signal_received=true`, `wine_exit=137`, one reaped game process, eight reaped
+helpers, and a clean prefix. The title has no supported Windows Cloud root, so
+no Cloud claim is made. Steam then uninstalled the 54 MB depot and Ullage
+restored the original launch entry.
 
 The current Gravity Circuit x64 probe ran on 2026-08-27 with the unchanged
 public package `2026.08.26-3` and an unmodified copy of the depot's
