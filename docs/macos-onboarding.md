@@ -686,9 +686,23 @@ early with Wine status 5 before a Stop event, so it is not a suitable x64
 control for this rehearsal. Katamari Damacy REROLL was then selected from the
 documented known-good x64 matrix. Steam presented its publisher EULA before
 the depot download could begin; that legal prompt is an explicit user-action
-boundary and was left untouched. The remaining live x64 rehearsal is to have
-the user accept that EULA if they choose, finish the depot download, and
-record native Play/Stop and Steamworks results separately.
+boundary and was not accepted by Ullage. On a later refresh Steam had moved
+past the prompt and downloaded the 3.3 GB depot, so the prompt was handled
+outside this run. The fresh public-package mapping launched Katamari through
+native Steam and kept the Windows process alive for about 35 seconds while
+loading the packaged x64 bridge and overlay injection, but Wine then exited
+with status 5 before a usable game surface or native Stop event. It is not
+counted as a current x64 renderer/Stop pass; the earlier matrix evidence is
+preserved separately.
+
+For a current package lifecycle control, the documented Stellar Mess row
+(AppID `1507530`, 20.81 MB, win32) was downloaded to the external library and
+mapped with version `2026.08.26-3`. Native Steam showed Running, the bridge
+logged the packaged runtime and Steam overlay injection, and the native Stop
+confirmation returned the page to Play. Its receipt records
+`native_stop_observed=true`, `wine_exit=137`, and a clean prefix. This validates
+the public package and supervisor on this Mac, but it is a 32-bit control and
+does not independently validate the x64 forwarder.
 
 The optional Steamworks probe also hit a useful diagnostic boundary during
 this rehearsal. TIS-100's older API DLL uses the legacy `SteamClient` export,
@@ -696,6 +710,25 @@ so the probe now supports both that entry point and the newer
 `SteamInternal_CreateInterface` export. Copies of the TIS-100 and EXAPUNKS
 API DLLs loaded under an ordinary shell-launched bridge but exited with Wine
 status 5 during `SteamAPI_Init`; because that is not Steam's Play-launched
-environment, it is not counted as a shipped-game feature failure. The native
-TIS-100 run still loaded the packaged bridge and native Steam client and
-completed native Stop cleanup.
+environment, it is not counted as a shipped-game feature failure. A temporary
+x64 probe copied from Katamari's `steam_api64.dll` was also launched through
+native Steam; it logged `steam_api_load=1` and
+`steam_api_init_begin=1`, then ended with status 5 without a completed API
+result. The probe therefore remains diagnostic rather than a current feature
+pass. The native TIS-100 and Stellar Mess runs still loaded the packaged bridge
+and native Steam client and completed native Stop cleanup.
+
+### 17. macOS Steam process detection
+
+While Katamari was downloading, `ps` showed the native `steam_osx` process and
+its CEF helpers, but `ullagectl status` briefly reported Steam stopped. The
+cause was macOS truncating the `comm` column to the account prefix; Ullage's
+whitespace split then treated `Application Support/Steam/.../steam_osx` as a
+different path. The process snapshot now uses the untruncated `ucomm` column
+and keeps a suffix check for full command paths, including `Steam Helper`.
+The first regression fixture made the suffix check too broad and classified a
+test command's `--steam-root /tmp/Steam` argument as the client; the matcher is
+now limited to real Steam executable suffixes and the fixture covers that
+negative case. It also deliberately excludes the long-lived `ipcserver`, which
+is supervised separately by Steam and must not keep normal appcache operations
+blocked after the client exits.

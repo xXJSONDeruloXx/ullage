@@ -212,12 +212,15 @@ def exercise(
 
 
 def main():
-    steam_pids = subprocess.run(
-        ["/usr/bin/pgrep", "-x", "steam_osx"],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
+    steam_pids = "\n".join(
+        subprocess.run(
+            ["/usr/bin/pgrep", "-x", process_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        for process_name in ("steam_osx", "Steam Helper")
+    ).strip()
     if steam_pids:
         raise SystemExit("quit native Steam before running: make integration")
 

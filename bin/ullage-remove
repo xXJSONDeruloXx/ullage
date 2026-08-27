@@ -35,7 +35,11 @@ case "$APP_ID" in *[!0-9]*|'') die "AppID must be numeric: $APP_ID" ;; esac
 PYTHON3_VALUE=${PYTHON3:-python3}
 PYTHON3_BIN=$(command -v "$PYTHON3_VALUE" 2>/dev/null || true)
 [ -n "$PYTHON3_BIN" ] || die "python3 is required (set PYTHON3 to override)"
-STEAM_PIDS=$(/usr/bin/pgrep -x steam_osx 2>/dev/null || true)
+steam_pids() {
+    /usr/bin/pgrep -x steam_osx 2>/dev/null || true
+    /usr/bin/pgrep -x 'Steam Helper' 2>/dev/null || true
+}
+STEAM_PIDS=$(steam_pids | sort -n -u)
 [ -z "$STEAM_PIDS" ] || die "quit native Steam before editing appcache (PIDs: $STEAM_PIDS)"
 
 CONFIG_DIR="$STATE_HOME/config/games"

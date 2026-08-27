@@ -179,7 +179,11 @@ def vdf_value(key: str, contents: str) -> str | None:
 
 
 def process_snapshot() -> list[dict[str, str]]:
-    result = run(["/bin/ps", "-axo", "pid=,comm=,args="])
+    # `comm` is a truncated executable path on macOS. `ucomm` is the
+    # untruncated process name, while `args` preserves the full command for
+    # diagnostics. This avoids splitting a path such as `Application
+    # Support/Steam` and then missing the native Steam process entirely.
+    result = run(["/bin/ps", "-axo", "pid=,ucomm=,args="])
     processes = []
     for line in result.stdout.splitlines():
         fields = line.strip().split(None, 2)
@@ -196,11 +200,18 @@ def process_snapshot() -> list[dict[str, str]]:
 
 
 def is_steam_process(process: dict[str, str]) -> bool:
-    names = set()
-    for value in (process.get("executable", ""), process.get("command", "")):
-        first_word = value.split(None, 1)[0] if value else ""
-        names.add(Path(first_word).name.casefold())
-    return bool(names & {"steam_osx", "steam", "steam.app"})
+    names = {Path(process.get("executable", "")).name.casefold()}
+    known_names = {"steam_osx", "steam", "steam.app", "steam helper"}
+    if names & known_names:
+        return True
+
+    command = process.get("command", "").casefold()
+    executable_suffixes = (
+        r"/contents/macos/steam_osx(?:\s|$)",
+        r"/contents/macos/steam(?:\s|$)",
+        r"/contents/frameworks/steam helper\.app/contents/macos/steam helper(?:\s|$)",
+    )
+    return any(re.search(suffix, command) for suffix in executable_suffixes)
 
 
 def steam_processes() -> list[dict[str, str]]:

@@ -161,6 +161,20 @@ confirmed; it is not promoted to `P`.
 | 508980 | Crashday Redline Edition | win32 | P | I | P | P | Fresh 521 MB depot. The game process loaded GameOverlay, both lsteamclient sides, native Steam client, and `steam_api.dll`; native Stop and cleanup passed. `WinAppData` mapping was healthy; no renderer pass is claimed from process evidence alone. |
 | 207140 | SpeedRunners | win32 | P | F | P | P | Fresh 669 MB depot. Ullage reached Running and native Stop returned to Play with a clean prefix, but no usable game surface or game-loaded lsteamclient/overlay handle was observed. Cloud metadata had no supported Windows root. |
 
+### Public-package follow-up
+
+These local reruns used the public `ullage-patches` package
+`2026.08.26-3`. They are kept separate from the 85-title coverage count and
+from earlier rows that used the prior manually assembled runtime. `I` means
+the boundary or process evidence was observed without a fresh renderer
+capture; `F` means the title exited before the renderer criterion.
+
+| AppID | Title | Arch | Launch | Renderer | Native Stop | Cleanup | Notes |
+| ---: | --- | :---: | :---: | :---: | :---: | :---: | --- |
+| 1507530 | Stellar Mess: The Princess Conundrum (Chapter 1) | win32 | P | I | P | P | Fresh 20.81 MB external-library install. Native Play reached Running, the packaged bridge and overlay injection were logged, and confirmed Stop returned to Play with a clean prefix. |
+| 848350 | Katamari Damacy REROLL | win64 | P | F | — | P | Fresh 3.3 GB external-library install. The packaged x64 bridge and overlay injection loaded and the process lived for about 35 seconds, then Wine exited with status 5 before a usable surface or native Stop event. The temporary native-Steam-launched x64 probe reached `steam_api_load=1` and `steam_api_init_begin=1` before the same status-5 boundary. |
+| 3520070 | Megabonk Demo | win64 | P | F | — | P | Fresh 157 MB external-library install. Native Play reached Running and the packaged x64 bridge/forwarder path was logged, but the title exited with Wine status 5 before a usable surface or native Stop event. |
+
 ## Per-title evidence
 
 The bridge log and Steam content log are the authoritative lifecycle artifacts.

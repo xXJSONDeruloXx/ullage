@@ -159,7 +159,11 @@ PYTHON3_BIN=$(command -v "$PYTHON3_VALUE" 2>/dev/null || true)
 [ -n "$WINE_ROOT" ] || die "set --wine-root or WINE_ROOT"
 [ -n "$GPTK_ROOT" ] || die "set --gptk-root or GPTK_ROOT"
 
-STEAM_PIDS=$(/usr/bin/pgrep -x steam_osx 2>/dev/null || true)
+steam_pids() {
+    /usr/bin/pgrep -x steam_osx 2>/dev/null || true
+    /usr/bin/pgrep -x 'Steam Helper' 2>/dev/null || true
+}
+STEAM_PIDS=$(steam_pids | sort -n -u)
 [ -z "$STEAM_PIDS" ] || die "quit native Steam before editing appcache (PIDs: $STEAM_PIDS)"
 
 case "$TARGET" in

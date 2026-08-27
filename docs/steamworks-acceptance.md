@@ -129,7 +129,7 @@ that result is recorded as a probe-environment limitation, not as a shipped
 game feature failure. The native TIS-100 Play run remains the current 32-bit
 transport/Stop control.
 
-On the current Katamari depot, the 32-bit and 64-bit probes returned
+In the earlier Katamari acceptance run, the 32-bit and 64-bit probes returned
 `SteamAPI_Init`, a logged-on identity, matching AppID, subscription/ownership,
 DLC count, achievement enumeration, and `SteamAPI_Shutdown`. The x64 run uses
 the small canonical-name forwarder described in `runtime/README.md`; the
@@ -141,6 +141,23 @@ The native Steam Play run then rendered Katamari through the same prefix, and
 the native Stop confirmation produced an AppID-scoped `Terminating` event;
 the bridge exited with `wine_exit=143 signal_received=1`, and process
 inspection found no Katamari, Wine server, or prefix-owned helper remaining.
+
+The public-package rerun on 2026-08-26 local time intentionally keeps that
+earlier feature evidence separate. A fresh Katamari Play crossed the native
+Steam boundary and loaded the packaged x64 bridge plus overlay injection, but
+the game exited with Wine status 5 before rendering or requiring Stop. A
+temporary native-Steam-launched x64 probe loaded Katamari's `steam_api64.dll`
+and logged `steam_api_init_begin=1`, then also ended with status 5 before a
+completed API result. This is a current title/runtime limitation, not evidence
+that the public package passed the x64 feature probe.
+
+The same package was independently exercised with the documented Stellar Mess
+win32 control. Native Play reached Running, the native Stop confirmation
+returned to Play, and the receipt recorded `native_stop_observed=true`,
+`wine_exit=137`, and a clean prefix. The current run therefore proves package
+transport and supervision on this Mac; the x64 Steamworks feature rows above
+remain the prior direct-probe evidence until a current x64 title completes the
+probe and renderer paths.
 
 ## Stop and cleanup boundary
 

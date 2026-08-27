@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the versioned ullagectl facade with a disposable Steam library."""
 
+import importlib.machinery
 import importlib.util
 import hashlib
 import json
@@ -26,6 +27,14 @@ RUNTIME_SPEC = importlib.util.spec_from_file_location(
 assert RUNTIME_SPEC is not None and RUNTIME_SPEC.loader is not None
 RUNTIME_HELPERS = importlib.util.module_from_spec(RUNTIME_SPEC)
 RUNTIME_SPEC.loader.exec_module(RUNTIME_HELPERS)
+
+ULLAGE_LOADER = importlib.machinery.SourceFileLoader(
+    "test_ullage_facade", str(ROOT / "bin" / "ullage")
+)
+ULLAGE_SPEC = importlib.util.spec_from_loader(ULLAGE_LOADER.name, ULLAGE_LOADER)
+assert ULLAGE_SPEC is not None and ULLAGE_SPEC.loader is not None
+ULLAGE = importlib.util.module_from_spec(ULLAGE_SPEC)
+ULLAGE_SPEC.loader.exec_module(ULLAGE)
 
 
 def run_cli(*arguments, env=None):
@@ -251,6 +260,28 @@ def make_runtime_fixture():
 
 
 def main():
+    original_run = ULLAGE.run
+    try:
+        ULLAGE.run = lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0],
+            0,
+            stdout=(
+                "13499 steam_osx /Users/test/Library/Application Support/Steam/"
+                "Steam.AppBundle/Steam/Contents/MacOS/steam_osx\n"
+                "13513 Steam Helper /Users/test/Library/Application Support/Steam/"
+                "Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app/"
+                "Contents/MacOS/Steam Helper -nocrashdialog\n"
+                "13687 ipcserver /Users/test/Library/Application Support/Steam/"
+                "Steam.AppBundle/Steam/Contents/MacOS/ipcserver\n"
+                "14000 zsh /bin/zsh -c ullagectl --steam-root /tmp/Steam\n"
+            ),
+            stderr="",
+        )
+        detected = ULLAGE.steam_processes()
+        assert [item["pid"] for item in detected] == ["13499", "13513"]
+    finally:
+        ULLAGE.run = original_run
+
     directory, steam, state = make_fixture()
     try:
         context = ("--steam-root", str(steam), "--state-dir", str(state))
