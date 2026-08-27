@@ -31,8 +31,7 @@ typedef uint64_t (__cdecl *UserSteamIdFn)(void *);
 typedef int (__cdecl *AppsBoolFn)(void *);
 typedef int (__cdecl *AppsBoolAppFn)(void *, uint32_t);
 typedef int (__cdecl *AppsCountFn)(void *, uint32_t);
-typedef int (__cdecl *AppsDlcFn)(void *, uint32_t, int, uint32_t *, int *,
-                                 char *, int);
+typedef int (__cdecl *AppsDlcFn)(void *, int, uint32_t *, int *, char *, int);
 typedef int (__cdecl *StatsRequestFn)(void *);
 typedef int (__cdecl *StatsCountFn)(void *);
 typedef const char *(__cdecl *StatsNameFn)(void *, int);
@@ -320,7 +319,7 @@ int main(int argc, char **argv) {
             uint32_t dlc_id = 0;
             int available = 0;
             char name[256] = {0};
-            int ok = dlc_data(steam_apps, api_app_id, i, &dlc_id, &available,
+            int ok = dlc_data(steam_apps, i, &dlc_id, &available,
                               name, (int)sizeof(name));
             printf("dlc[%d]=ok:%d,id:%u,available:%d,installed:%d,name:%s\n",
                    i, ok, dlc_id, available, ok ? dlc_installed(steam_apps, dlc_id) : 0,
