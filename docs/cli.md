@@ -51,6 +51,8 @@ bin/ullagectl library --json
 bin/ullagectl inspect APPID --json
 bin/ullagectl diagnose APPID --json
 bin/ullagectl plan APPID --json
+bin/ullagectl smoke --json
+bin/ullagectl runtime releases --json
 ~~~
 
 `system-status`, `status`, and `discover` remain accepted aliases for
@@ -79,12 +81,23 @@ disabled, the native Cloud action, the selected runtime, and any blocking
 issues. It is the source for a Configure screen; the GUI must not reimplement
 multi-launch or Cloud rules.
 
+`smoke` is a read-only two-title bridge preflight. By default it checks the
+known-good 32-bit TIS-100 control (`370360`) and the known x64 forwarder
+control (`848350`, Katamari Damacy REROLL). Pass an AppID positionally and
+`--x64-appid` to use different matrix controls. Both titles must already be
+installed and mapped; the command does not press Play or synthesize a native
+Steam Stop event. Its JSON includes the exact `steam://rungameid/` URLs and
+the native Play/Stop acceptance steps.
+
 Mutating commands are:
 
 ~~~sh
 bin/ullagectl install APPID --runtime RUNTIME_ID --json
 bin/ullagectl repair APPID --json
 bin/ullagectl remove APPID --json
+bin/ullagectl runtime fetch --json
+bin/ullagectl runtime rollback --json
+bin/ullagectl runtime stage-forwarder --prefix PREFIX --json
 ~~~
 
 `install` can resolve the target, Steam install directory, and GameHub runtime
@@ -154,6 +167,23 @@ package object exposes `runtime_id`, `version`, `manifest_sha256`,
 `bridge_root`, per-artifact status, and source provenance. A failed
 verification names the manifest or artifact that needs to be replaced.
 
+`runtime releases` exposes the checked-in release lock. `runtime fetch` downloads
+the default pinned public release directly over HTTPS, verifies its byte count
+and SHA-256, rejects unsafe tar members, verifies the extracted manifest and
+every artifact, and only then installs the package. The archive is cached under
+`~/.ullage/downloads` by default; `--cache-dir` can place it on another volume.
+The release lock is in `runtime/releases.json` and must be updated together
+with a release asset and its digest.
+
+`runtime rollback` atomically switches `current.json` to the previous verified
+package, or to the package named by `--runtime-id` and `--version`. Packages
+are never deleted, and the previous pointers are retained in
+`runtimes/history.json`. For an x64 title, `runtime stage-forwarder --prefix`
+copies the verified canonical-name forwarder into the prefix with an atomic
+replace and saves an existing prefix file as `steamclient64.dll.ullage-original`.
+`runtime restore-forwarder` restores that saved file. Both prefix operations
+require native Steam to be stopped.
+
 ## Diagnostics
 
 After a bridge run, Ullage writes a structured receipt at
@@ -166,3 +196,9 @@ human debugging; callers should use the receipt fields.
 The facade deliberately does not expose the optional Steamworks probe as a
 green compatibility verdict until its ABI declarations and JSON output are
 made safe for that purpose.
+
+`doctor` includes `blocking_checks` and ordered `next_steps`. Each step names
+the missing host input, the remediation text, and a command where Ullage can
+perform the fix. Wine, GPTK/D3DMetal, native Steam, the Windows depot, and an
+initialized prefix remain host responsibilities; `runtime fetch` only closes
+the bridge-package gap.

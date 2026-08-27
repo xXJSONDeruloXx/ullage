@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "default": "runtime-macos-2026-08-26-3",
+  "releases": [
+    {
+      "tag": "runtime-macos-2026-08-26-3",
+      "runtime_id": "macos-x86_64-lsteamclient",
+      "version": "2026.08.26-3",
+      "repository": "xXJSONDeruloXx/ullage-patches",
+      "asset": "ullage-bridge-runtime-2026.08.26-3.tar.gz",
+      "url": "https://github.com/xXJSONDeruloXx/ullage-patches/releases/download/runtime-macos-2026-08-26-3/ullage-bridge-runtime-2026.08.26-3.tar.gz",
+      "sha256": "9413215f4a72d19adf2fe2024d16b4e7755542b34db94ea694005ea580212a4b",
+      "archive_size": 9493440
+    }
+  ]
+}

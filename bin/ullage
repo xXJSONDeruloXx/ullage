@@ -34,6 +34,9 @@ CAPABILITIES = [
     "steam_stop_watch",
     "structured_diagnostics",
     "runtime_packages",
+    "runtime_fetch",
+    "runtime_rollback",
+    "smoke_test",
 ]
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -78,6 +81,9 @@ RECOVERABLE_ERRORS = {
     "runtime_artifact_missing",
     "prefix_missing",
     "forwarder_missing",
+    "runtime_release_unavailable",
+    "runtime_rollback_unavailable",
+    "smoke_not_ready",
 }
 
 
@@ -111,6 +117,12 @@ def error_code(message: str, default: str = "command_failed") -> str:
         return "runtime_incomplete"
     if "cloud" in text and ("unsupported" in text or "not supported" in text):
         return "cloud_unsupported"
+    if "release" in text and ("download" in text or "pinned" in text or "archive" in text):
+        return "runtime_release_unavailable"
+    if "rollback" in text:
+        return "runtime_rollback_unavailable"
+    if "smoke" in text:
+        return "smoke_not_ready"
     return default
 
 
@@ -486,9 +498,9 @@ def configured_runtime_profile(args: argparse.Namespace, state_root: Path) -> di
 
 
 def runtime_checks(profile: dict, state_root: Path | None = None) -> list[dict]:
-    wine_root = expand(profile["wine_root"]) if profile.get("wine_root") else None
-    gptk_root = expand(profile["gptk_root"]) if profile.get("gptk_root") else None
-    bridge_root = expand(profile["bridge_root"]) if profile.get("bridge_root") else None
+    wine_root = expand(profile.get("wine_root")) if profile.get("wine_root") else None
+    gptk_root = expand(profile.get("gptk_root")) if profile.get("gptk_root") else None
+    bridge_root = expand(profile.get("bridge_root")) if profile.get("bridge_root") else None
     checks: list[dict] = []
     if platform.machine().lower() in {"arm64", "aarch64"}:
         rosetta = run(["/usr/bin/arch", "-x86_64", "/usr/bin/true"]).returncode == 0
@@ -513,21 +525,28 @@ def runtime_checks(profile: dict, state_root: Path | None = None) -> list[dict]:
             check_record("steamclient64-forwarder", "steamclient64 forwarder", bridge_root / "x86_64-windows/steamclient64.dll" if bridge_root else None, remediation="Install the canonical-name x64 Steam client forwarder."),
         ]
     )
-    if bridge_root and state_root:
-        package = RUNTIME.package_for_bridge_root(bridge_root, state_root)
+    if state_root:
+        package = RUNTIME.package_for_bridge_root(bridge_root, state_root) if bridge_root else None
         if package:
-            checks.append(
-                check_record(
-                    "runtime-package",
-                    "Verified Ullage bridge package",
-                    Path(package["manifest"]),
-                    remediation=package.get("error") or "Install or repair the active runtime package.",
-                )
+            package_check = check_record(
+                "runtime-package",
+                "Verified Ullage bridge package",
+                Path(package["manifest"]),
+                remediation=package.get("error") or "Install or repair the active runtime package.",
             )
-            checks[-1]["status"] = "ready" if package.get("ready") else "missing"
+            package_check["status"] = "ready" if package.get("ready") else "missing"
+        else:
+            package_check = check_record(
+                "runtime-package",
+                "Verified Ullage bridge package",
+                None,
+                remediation="Run `ullagectl runtime fetch` to install the pinned bridge package.",
+            )
+        checks.append(package_check)
     if profile.get("prefix"):
-        checks.append(check_record("prefix", "Wine prefix", expand(profile["prefix"]), remediation="Choose an initialized Wine prefix.", directory=True))
-        checks.append(check_record("prefix-system-reg", "Wine prefix registry", expand(profile["prefix"]) / "system.reg", remediation="Initialize the selected Wine prefix."))
+        prefix = expand(profile["prefix"])
+        checks.append(check_record("prefix", "Wine prefix", prefix, remediation="Choose an initialized Wine prefix.", directory=True))
+        checks.append(check_record("prefix-system-reg", "Wine prefix registry", prefix / "system.reg", remediation="Initialize the selected Wine prefix."))
     return checks
 
 
@@ -601,6 +620,41 @@ def check_record(
     }
 
 
+def doctor_next_steps(checks: list[dict]) -> list[dict]:
+    """Turn failed readiness checks into stable, actionable setup steps."""
+
+    commands = {
+        "steam": "Install native Steam or pass --steam-root to its data root.",
+        "windows-depot": "ullagectl steam set-depot-mode windows",
+        "rosetta": "softwareupdate --install-rosetta",
+        "wine": "Install/select a compatible x86_64 GameHub/Wine runtime, then rerun doctor.",
+        "wineserver": "Select the wineserver from the same Wine/Proton installation as bin/wine.",
+        "gptk": "Install/select GPTK or D3DMetal containing external/libd3dshared.dylib.",
+        "lsteamclient-unix": "ullagectl runtime fetch",
+        "lsteamclient-win32": "ullagectl runtime fetch",
+        "lsteamclient-win64": "ullagectl runtime fetch",
+        "steamclient64-forwarder": "ullagectl runtime fetch",
+        "runtime-package": "ullagectl runtime fetch",
+        "prefix": "Create/select an initialized prefix and pass it with --prefix PATH.",
+        "prefix-system-reg": "Initialize the selected Wine prefix so PREFIX/system.reg exists.",
+        "runtime-profile": "Install/select Wine, GPTK, and an initialized prefix, or pass their paths explicitly.",
+    }
+    steps = []
+    for check in checks:
+        if not check.get("required") or check.get("status") == "ready":
+            continue
+        identifier = str(check.get("id"))
+        steps.append(
+            {
+                "check": identifier,
+                "label": check.get("label"),
+                "message": check.get("remediation") or "Resolve this missing requirement and rerun doctor.",
+                "command": commands.get(identifier),
+            }
+        )
+    return steps
+
+
 def runtime_status(args: argparse.Namespace, state_root: Path) -> dict:
     profiles = runtime_profiles(args, state_root)
     selected = selected_runtime_profile(args, state_root, profiles)
@@ -655,6 +709,18 @@ def system_status(args: argparse.Namespace) -> dict:
                 "remediation": package.get("error") or "Install or repair the active runtime package.",
             }
         )
+    if not runtime.get("selected"):
+        checks.append(
+            {
+                "id": "runtime-profile",
+                "label": "Wine/GPTK runtime profile",
+                "status": "missing",
+                "required": True,
+                "path": None,
+                "remediation": "Install/select Wine, GPTK, and an initialized prefix, or pass their paths explicitly.",
+            }
+        )
+    next_steps = doctor_next_steps(checks)
     return {
         "status": "ready" if all(item["status"] == "ready" for item in checks if item["required"]) else "needs_setup",
         "requires_steam_stopped": True,
@@ -664,6 +730,8 @@ def system_status(args: argparse.Namespace) -> dict:
         "steam": steam,
         "runtime": runtime,
         "checks": checks,
+        "blocking_checks": [item["id"] for item in checks if item["required"] and item["status"] != "ready"],
+        "next_steps": next_steps,
     }
 
 
@@ -1331,6 +1399,156 @@ def command_plan(args: argparse.Namespace) -> int:
     return output("plan", {"plan": plan, "appid": plan["appid"]})
 
 
+def smoke_case(
+    args: argparse.Namespace,
+    appid: int,
+    expected_arch: str,
+) -> dict:
+    """Run the non-mutating bridge preflight for one installed matrix title."""
+
+    steam_root = expand(args.steam_root)
+    state_root = expand(args.state_dir)
+    case = {"appid": appid, "expected_arch": expected_arch}
+    game = installed_game(steam_root, appid)
+    if game is None:
+        case.update(
+            status="missing",
+            ready=False,
+            message=f"AppID {appid} is not installed; install its Windows depot first.",
+            play_url=f"steam://rungameid/{appid}",
+        )
+        return case
+    appinfo = load_appinfo(steam_root)
+    record = game_record(game, appinfo, steam_root, state_root)
+    case.update(name=record["name"], install_dir=record["install_dir"])
+    options = [
+        option
+        for option in record["launch_options"]
+        if option.get("available") and option.get("arch") == expected_arch
+    ]
+    if not options:
+        case.update(
+            status="unsupported",
+            ready=False,
+            message=f"No usable {expected_arch} Windows PE launch entry was found.",
+            launch_options=record["launch_options"],
+            play_url=f"steam://rungameid/{appid}",
+        )
+        return case
+    option = options[0]
+    case.update(
+        entry=option["entry"],
+        executable=option["executable"],
+        target=option["path"],
+        mapping_status=record["mapping_status"],
+        runtime=record["runtime"],
+        play_url=f"steam://rungameid/{appid}",
+    )
+    if record["mapping_status"] != "healthy":
+        case.update(
+            status="needs_mapping",
+            ready=False,
+            message="Install or repair the Ullage mapping before running the smoke test.",
+            command=f"ullagectl install {appid}",
+        )
+        return case
+    paths = MAPPING._paths(state_root, appid)
+    config = Path(paths["config_file"])
+    if not config.is_file():
+        case.update(status="needs_mapping", ready=False, message=f"mapping config is missing: {config}")
+        return case
+    target = Path(option["path"])
+    working_directory = option.get("working_directory") or ""
+    game_dir = Path(record["install_dir"]) / working_directory if working_directory else target.parent
+    try:
+        result = run(
+            [
+                str(SCRIPT_DIR / "ullage-bridge"),
+                "--config", str(config),
+                "--state-dir", str(state_root),
+                "--steam-root", str(steam_root),
+                "--game-exe", str(target),
+                "--game-dir", str(game_dir),
+                "--arch", expected_arch,
+                "--dry-run",
+            ]
+        )
+    except CLIError as exc:
+        case.update(status="failed", ready=False, message=str(exc))
+        return case
+    if result.returncode != 0:
+        case.update(
+            status="failed",
+            ready=False,
+            message=(result.stderr or result.stdout).strip() or f"bridge preflight exited {result.returncode}",
+            bridge_exit=result.returncode,
+        )
+        return case
+    case.update(status="ready", ready=True, bridge_preflight=result.stdout.strip())
+    return case
+
+
+def smoke_record(args: argparse.Namespace) -> dict:
+    """Preflight the known-good 32-bit and x64-forwarder matrix controls."""
+
+    first = getattr(args, "appid_option", None)
+    if first is None:
+        first = getattr(args, "appid_pos", None)
+    first = int(first or 370360)
+    x64 = int(args.x64_appid)
+    state_root = expand(args.state_dir)
+    stage = None
+    if args.stage_forwarder:
+        if steam_running():
+            raise CLIError("Native Steam must be fully quit before staging a prefix forwarder.")
+        profile = selected_runtime_profile(args, state_root)
+        prefix = args.prefix or (profile.get("prefix") if profile else None)
+        if not prefix:
+            raise CLIError("--stage-forwarder requires a selected runtime with a prefix or --prefix")
+        stage = RUNTIME.stage_forwarder(state_root, prefix)
+    cases = [
+        smoke_case(args, first, "win32"),
+        smoke_case(args, x64, "win64"),
+    ]
+    ready = all(case.get("ready") for case in cases)
+    return {
+        "operation": "smoke",
+        "ready": ready,
+        "cases": cases,
+        "native_steam_actions": [
+            {
+                "appid": case["appid"],
+                "play_url": case["play_url"],
+                "stop": "Use the native Steam Stop action, then confirm the receipt and clean prefix.",
+            }
+            for case in cases
+        ],
+        "stage_forwarder": stage,
+        "note": "This command is a read-only bridge preflight; native Play/Stop remains a Steam-client acceptance step.",
+    }
+
+
+def command_smoke(args: argparse.Namespace) -> int:
+    try:
+        smoke = smoke_record(args)
+    except (CLIError, OSError, RUNTIME.RuntimePackageError) as exc:
+        return failure("smoke", str(exc), "smoke_not_ready")
+    if not smoke["ready"]:
+        return output(
+            "smoke",
+            {
+                "smoke": smoke,
+                "error": {
+                    "code": "smoke_not_ready",
+                    "message": "one or more smoke cases are not ready",
+                    "recoverable": True,
+                },
+            },
+            ok=False,
+        )
+    return output("smoke", {"smoke": smoke})
+
+
 def apply_runtime_defaults(args: argparse.Namespace) -> dict:
     """Resolve a runtime once, then fill installer-only paths from it."""
 
@@ -1548,6 +1766,72 @@ def command_remove(args: argparse.Namespace) -> int:
 def command_runtime(args: argparse.Namespace) -> int:
     state_root = expand(args.state_dir)
     runtime_command = getattr(args, "runtime_command", None)
+    if runtime_command == "releases":
+        try:
+            catalog = RUNTIME.release_catalog(args.release_index)
+        except RUNTIME.RuntimePackageError as exc:
+            return failure("runtime releases", str(exc), "runtime_release_unavailable")
+        return output("runtime releases", catalog)
+    if runtime_command == "fetch":
+        if args.prefix and steam_running():
+            return failure(
+                "runtime fetch",
+                "Native Steam must be fully quit before staging a prefix forwarder.",
+                "steam_running",
+            )
+        try:
+            result = RUNTIME.fetch_release(
+                state_root,
+                args.release,
+                args.cache_dir,
+                args.release_index,
+            )
+        except (OSError, RUNTIME.RuntimePackageError) as exc:
+            return failure("runtime fetch", str(exc), "runtime_release_unavailable")
+        forwarder = None
+        if args.prefix:
+            try:
+                forwarder = RUNTIME.stage_forwarder(state_root, args.prefix)
+            except (OSError, RUNTIME.RuntimePackageError) as exc:
+                return failure("runtime fetch", str(exc), "runtime_incomplete")
+        payload = {
+            "release": result["release"],
+            "archive": result["archive"],
+            "package": result["package"],
+        }
+        if forwarder:
+            payload["forwarder"] = forwarder
+        return output("runtime fetch", payload)
+    if runtime_command == "stage-forwarder":
+        if steam_running():
+            return failure(
+                "runtime stage-forwarder",
+                "Native Steam must be fully quit before staging a prefix forwarder.",
+                "steam_running",
+            )
+        try:
+            forwarder = RUNTIME.stage_forwarder(state_root, args.prefix)
+        except (OSError, RUNTIME.RuntimePackageError) as exc:
+            return failure("runtime stage-forwarder", str(exc), "runtime_incomplete")
+        return output("runtime stage-forwarder", {"forwarder": forwarder})
+    if runtime_command == "restore-forwarder":
+        if steam_running():
+            return failure(
+                "runtime restore-forwarder",
+                "Native Steam must be fully quit before restoring a prefix forwarder.",
+                "steam_running",
+            )
+        try:
+            forwarder = RUNTIME.restore_forwarder(args.prefix)
+        except (OSError, RUNTIME.RuntimePackageError) as exc:
+            return failure("runtime restore-forwarder", str(exc), "runtime_incomplete")
+        return output("runtime restore-forwarder", {"forwarder": forwarder})
+    if runtime_command == "rollback":
+        try:
+            package = RUNTIME.rollback(state_root, args.runtime_id, args.version)
+        except (OSError, RUNTIME.RuntimePackageError) as exc:
+            return failure("runtime rollback", str(exc), "runtime_rollback_unavailable")
+        return output("runtime rollback", {"package": package})
     if runtime_command == "install":
         try:
             package = RUNTIME.install_manifest(
@@ -1686,6 +1970,15 @@ def parser() -> argparse.ArgumentParser:
     add_appid(diagnose)
     plan = commands.add_parser("plan", help="show a read-only install plan")
     add_plan_options(plan)
+    smoke = commands.add_parser(
+        "smoke", help="preflight the known-good 32-bit and x64-forwarder matrix controls"
+    )
+    add_context(smoke)
+    add_runtime_options(smoke)
+    add_appid(smoke)
+    smoke.add_argument("--x64-appid", type=int, default=848350, help="x64 forwarder control AppID")
+    smoke.add_argument("--prefix", help="prefix to use when --stage-forwarder is supplied")
+    smoke.add_argument("--stage-forwarder", action="store_true", help="stage the verified x64 forwarder before preflight")
     install = commands.add_parser("install", help="install a guarded Steam launch mapping")
     add_install_options(install)
     repair = commands.add_parser("repair", help="repair a stale Steam launch mapping")
@@ -1700,6 +1993,19 @@ def parser() -> argparse.ArgumentParser:
     runtime_list = runtime_commands.add_parser("list", help="list discovered runtimes")
     add_context(runtime_list)
     add_runtime_options(runtime_list)
+    runtime_releases = runtime_commands.add_parser(
+        "releases", help="list the pinned downloadable runtime releases"
+    )
+    add_context(runtime_releases)
+    runtime_releases.add_argument("--release-index", help=argparse.SUPPRESS)
+    runtime_fetch = runtime_commands.add_parser(
+        "fetch", help="download, verify, and install the pinned bridge runtime release"
+    )
+    add_context(runtime_fetch)
+    runtime_fetch.add_argument("--release", help="pinned release tag (defaults to the checked-in release)")
+    runtime_fetch.add_argument("--cache-dir", help="download cache directory (defaults under --state-dir)")
+    runtime_fetch.add_argument("--release-index", help=argparse.SUPPRESS)
+    runtime_fetch.add_argument("--prefix", help="also stage the x64 forwarder in this initialized prefix")
     runtime_install = runtime_commands.add_parser(
         "install", help="verify and stage a versioned bridge runtime package"
     )
@@ -1712,6 +2018,22 @@ def parser() -> argparse.ArgumentParser:
     add_context(runtime_verify)
     runtime_verify.add_argument("--runtime-id")
     runtime_verify.add_argument("--version")
+    runtime_rollback = runtime_commands.add_parser(
+        "rollback", help="activate the previous or selected verified bridge package"
+    )
+    add_context(runtime_rollback)
+    runtime_rollback.add_argument("--runtime-id")
+    runtime_rollback.add_argument("--version")
+    runtime_stage = runtime_commands.add_parser(
+        "stage-forwarder", help="stage the active package's x64 forwarder in a Wine prefix"
+    )
+    add_context(runtime_stage)
+    runtime_stage.add_argument("--prefix", required=True)
+    runtime_restore = runtime_commands.add_parser(
+        "restore-forwarder", help="restore the prefix file saved by stage-forwarder"
+    )
+    add_context(runtime_restore)
+    runtime_restore.add_argument("--prefix", required=True)
     runtime_alias = commands.add_parser("runtime-list", help="list discovered runtimes")
     add_context(runtime_alias)
     add_runtime_options(runtime_alias)
@@ -1741,6 +2063,8 @@ def main(argv: list[str] | None = None) -> int:
             return command_diagnose(args)
         if args.command == "plan":
             return command_plan(args)
+        if args.command == "smoke":
+            return command_smoke(args)
         if args.command == "install":
             return command_install(args)
         if args.command == "repair":

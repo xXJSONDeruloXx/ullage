@@ -91,7 +91,9 @@ repository/                 source, tests, runtime contract
 ~/.ullage/                  launchers, configs, backups, prefixes, logs,
                             sessions/<appid>/last.json receipts,
                             runtimes/<id>/<version>/ verified bridge packages,
-                            runtimes/current.json active package pointer
+                            runtimes/current.json active package pointer,
+                            runtimes/history.json rollback pointers,
+                            downloads/ verified release archives
 Steam/appcache/appinfo.vdf  native Steam's local control-plane cache
 ~~~
 
@@ -103,8 +105,8 @@ Steam/appcache/appinfo.vdf  native Steam's local control-plane cache
   mutation facade for machine callers.
 * `bin/ullage-mapping.py` — status and conservative repair.
 * `bin/ullage-bridge` — hot launch and process supervision boundary.
-* `bin/ullage-runtime.py` — manifest verification, package staging, and
-  runtime provenance.
+* `bin/ullage-runtime.py` — release/archive/manifest verification, package
+  staging, rollback, forwarder staging, and runtime provenance.
 * `bin/ullage-reap` — prefix-scoped cleanup.
 * `bin/ullage-appinfo.py` — dependency-free binary VDF editing.
 * `bin/ullage-path.py` — install-root-relative launcher path calculation.

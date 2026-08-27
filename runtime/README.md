@@ -61,12 +61,48 @@ bin/ullagectl runtime install \
 bin/ullagectl runtime verify
 ```
 
+On a new machine, use the checked-in public-release lock instead of manually
+assembling the four files:
+
+```sh
+bin/ullagectl runtime releases --json
+bin/ullagectl runtime fetch --json
+bin/ullagectl runtime verify --json
+```
+
+`runtime fetch` downloads the pinned GitHub release over HTTPS, checks the
+locked archive size and SHA-256, rejects path traversal, symlink, hard-link,
+device, and oversized archive members, then verifies the extracted manifest
+and every artifact before atomic installation. The release URL, tag, asset,
+size, and digest are recorded in [`releases.json`](releases.json). The archive
+is cached under `~/.ullage/downloads` by default; pass `--cache-dir` for an
+external volume.
+
 The installer verifies every artifact before copying, copies into a temporary
 versioned directory under `~/.ullage/runtimes`, verifies the copy again, and
 only then atomically updates `~/.ullage/runtimes/current.json`. The active
 package is preferred over legacy manually assembled bridge roots. A tampered
 or incomplete active package makes `doctor`, `runtime verify`, and future
 mapping installs fail with the manifest path and the affected artifact.
+
+Every package activation retains the prior verified pointer in
+`~/.ullage/runtimes/history.json`. Roll back without deleting packages:
+
+```sh
+bin/ullagectl runtime rollback --json
+bin/ullagectl runtime rollback \
+  --runtime-id macos-x86_64-lsteamclient --version VERSION --json
+```
+
+For a 64-bit title, stage the active package's canonical-name forwarder in its
+initialized prefix. An existing GameHub/native prefix file is moved to a
+same-directory `.ullage-original` backup before the atomic copy; it can be
+restored with the matching command.
+
+```sh
+bin/ullagectl runtime stage-forwarder --prefix /path/to/prefix --json
+bin/ullagectl runtime restore-forwarder --prefix /path/to/prefix --json
+```
 
 `runtime list` exposes both discovered host runtimes and installed package
 provenance. A mapping records the package ID, version, manifest path, and

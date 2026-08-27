@@ -23,6 +23,7 @@ typedef void (__cdecl *VoidFn)(void);
 typedef int (__cdecl *GetIntFn)(void);
 typedef uint32_t (__cdecl *GetAppIdFn)(void *);
 typedef void *(__cdecl *CreateInterfaceFn)(const char *);
+typedef void *(__cdecl *SteamClientFn)(void);
 typedef void *(__cdecl *GetUserInterfaceFn)(void *, int, int, const char *);
 typedef void *(__cdecl *GetUtilsInterfaceFn)(void *, int, const char *);
 typedef int (__cdecl *UserBoolFn)(void *);
@@ -219,7 +220,10 @@ int main(int argc, char **argv) {
     GetIntFn get_user = LOAD_FN(api, "SteamAPI_GetHSteamUser", GetIntFn);
     CreateInterfaceFn create =
         LOAD_FN(api, "SteamInternal_CreateInterface", CreateInterfaceFn);
-    if (!init || !run_callbacks || !shutdown || !get_pipe || !get_user || !create) {
+    SteamClientFn legacy_client =
+        LOAD_FN(api, "SteamClient", SteamClientFn);
+    if (!init || !run_callbacks || !shutdown || !get_pipe || !get_user ||
+        (!create && !legacy_client)) {
         return 2;
     }
 
@@ -237,8 +241,13 @@ int main(int argc, char **argv) {
     int user_handle = get_user();
     printf("steam_pipe=%d\nsteam_user=%d\n", pipe, user_handle);
 
-    void *client = interface_with_versions(
-        create, client_versions, sizeof(client_versions) / sizeof(client_versions[0]));
+    void *client = create
+        ? interface_with_versions(
+              create, client_versions,
+              sizeof(client_versions) / sizeof(client_versions[0]))
+        : legacy_client();
+    if (!create && client)
+        printf("interface=SteamClient\n");
     GetUserInterfaceFn get_user_interface =
         LOAD_FN(api, "SteamAPI_ISteamClient_GetISteamUser", GetUserInterfaceFn);
     GetUserInterfaceFn get_apps_interface =

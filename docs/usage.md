@@ -17,11 +17,19 @@ button invokes an external launcher. Steam must be fully quit while
   picked up after the next Steam restart.
 * A prepared Wine prefix with `system.reg`. Use one prefix per AppID while the
   lifecycle and reaper work remains experimental.
-* Wine, GPTK/D3DMetal, and compatible lsteamclient artifacts matching the
-  [runtime contract](../runtime/README.md).
+* Wine and GPTK/D3DMetal matching the [runtime contract](../runtime/README.md).
+  Fetch the verified lsteamclient package on a new machine with:
+
+  ```sh
+  bin/ullagectl runtime fetch --json
+  ```
 * Native Steam's `steamclient.dylib`.
-* For 64-bit games, the staged `steamclient64.dll` forwarder described by the
-  runtime contract.
+* For 64-bit games, stage the verified forwarder into the selected prefix while
+  native Steam is stopped:
+
+  ```sh
+  bin/ullagectl runtime stage-forwarder --prefix /path/to/prefix --json
+  ```
 
 ## Build and check
 
@@ -39,15 +47,17 @@ make integration
 
 ## Install the verified bridge package
 
-Download and extract the matching bridge release from
-[`ullage-patches`](https://github.com/xXJSONDeruloXx/ullage-patches/releases),
-then let Ullage verify and stage its manifest:
+The normal new-machine path is release-backed and one command:
 
 ~~~sh
-bin/ullagectl runtime install \
-  --manifest /path/to/ullage-bridge-runtime-VERSION/manifest.json --json
+bin/ullagectl runtime fetch --json
 bin/ullagectl runtime verify --json
 ~~~
+
+The pinned public release comes from
+[`ullage-patches`](https://github.com/xXJSONDeruloXx/ullage-patches/releases).
+For an offline or manually downloaded archive, `runtime install --manifest`
+remains available and performs the same per-artifact verification.
 
 Only the four small lsteamclient/forwarder artifacts are staged under
 `~/.ullage/runtimes`; Wine, GPTK/D3DMetal, native Steam, and the prefix remain
@@ -63,6 +73,7 @@ bin/ullagectl doctor --json
 bin/ullagectl runtime list --json
 bin/ullagectl library --json
 bin/ullagectl plan APPID --json
+bin/ullagectl smoke --json
 bin/ullagectl steam set-depot-mode windows --json
 ~~~
 

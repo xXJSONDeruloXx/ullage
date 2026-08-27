@@ -651,3 +651,51 @@ packaged x86 lsteamclient and Steam API, native Steam showed Running and the
 Stop confirmation returned it to Play, and the receipt recorded a clean Wine
 prefix. The package was published as tag `runtime-macos-2026-08-26-3` in
 `ullage-patches`.
+
+### 16. Public release bootstrap and fresh-state rehearsal
+
+The package retrieval path was simplified after `ullage-patches` became public.
+The first direct-URL check returned HTTP 404 while the repository was still
+private, and the initial bootstrap design considered GitHub API or `gh`
+authentication. Once the repository visibility changed to public, the pinned
+release URL worked with a plain HTTPS request, so no GitHub token, `gh` login,
+or API fallback is needed for a new machine.
+
+The checked-in `runtime/releases.json` lock now identifies the release tag,
+asset, runtime ID, version, archive size (`9,493,440` bytes), SHA-256
+(`9413215f4a72d19adf2fe2024d16b4e7755542b34db94ea694005ea580212a4b`), and
+public URL. `runtime fetch` caches the archive, verifies it before opening it,
+rejects traversal, links, devices, duplicate paths, and oversized expansion,
+then verifies the package manifest and every artifact before activation.
+
+On this Mac, a fresh state root at `/tmp/ullage-isolated.O0qwed` fetched that
+public archive, installed `macos-x86_64-lsteamclient` version `2026.08.26-3`,
+passed `runtime verify`, and made `doctor` report no blocking checks. A
+separate disposable initialized prefix staged the canonical
+`steamclient64.dll` as a regular file and restored its original stock symlink.
+The package and forwarder tests also exercise atomic activation, retained
+rollback pointers, archive tamper rejection, and manifest/artifact mismatch
+reporting without touching the user's normal Steam state.
+
+The new `smoke` command is intentionally a read-only bridge preflight. It
+checks the installed/mapped 32-bit and x64-forwarder controls and emits the
+native Steam `steam://rungameid/` actions, but Play, Stop, Cloud writes, and
+other game state changes remain explicit acceptance steps. The fresh
+EXAPUNKS install completed and mapped correctly, but its native launch exited
+early with Wine status 5 before a Stop event, so it is not a suitable x64
+control for this rehearsal. Katamari Damacy REROLL was then selected from the
+documented known-good x64 matrix. Steam presented its publisher EULA before
+the depot download could begin; that legal prompt is an explicit user-action
+boundary and was left untouched. The remaining live x64 rehearsal is to have
+the user accept that EULA if they choose, finish the depot download, and
+record native Play/Stop and Steamworks results separately.
+
+The optional Steamworks probe also hit a useful diagnostic boundary during
+this rehearsal. TIS-100's older API DLL uses the legacy `SteamClient` export,
+so the probe now supports both that entry point and the newer
+`SteamInternal_CreateInterface` export. Copies of the TIS-100 and EXAPUNKS
+API DLLs loaded under an ordinary shell-launched bridge but exited with Wine
+status 5 during `SteamAPI_Init`; because that is not Steam's Play-launched
+environment, it is not counted as a shipped-game feature failure. The native
+TIS-100 run still loaded the packaged bridge and native Steam client and
+completed native Stop cleanup.

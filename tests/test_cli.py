@@ -2,6 +2,7 @@
 """Exercise the versioned ullagectl facade with a disposable Steam library."""
 
 import importlib.util
+import hashlib
 import json
 import os
 import struct
@@ -18,6 +19,13 @@ SPEC = importlib.util.spec_from_file_location("test_appinfo_helpers", APPINFO_TE
 assert SPEC is not None and SPEC.loader is not None
 APPINFO_HELPERS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(APPINFO_HELPERS)
+
+RUNTIME_SPEC = importlib.util.spec_from_file_location(
+    "test_runtime_helpers", ROOT / "bin" / "ullage-runtime.py"
+)
+assert RUNTIME_SPEC is not None and RUNTIME_SPEC.loader is not None
+RUNTIME_HELPERS = importlib.util.module_from_spec(RUNTIME_SPEC)
+RUNTIME_SPEC.loader.exec_module(RUNTIME_HELPERS)
 
 
 def run_cli(*arguments, env=None):
@@ -138,6 +146,35 @@ def make_fixture():
     depot_config.parent.mkdir(parents=True)
     depot_config.write_text("# keep this setting\n", encoding="utf-8")
     state = root / "state"
+    bridge = root / "bridge-source"
+    artifacts = []
+    for index, relative in enumerate(sorted(RUNTIME_HELPERS.REQUIRED_ARTIFACTS)):
+        path = bridge / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(f"fixture-artifact-{index}\n".encode())
+        contents = path.read_bytes()
+        artifacts.append(
+            {
+                "path": relative,
+                "size": len(contents),
+                "sha256": hashlib.sha256(contents).hexdigest(),
+            }
+        )
+    manifest = bridge / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "runtime_id": "fixture-runtime",
+                "version": "test-1",
+                "artifact_root": "bridge",
+                "source": {"repository": "test", "commit": "fixture"},
+                "artifacts": artifacts,
+            }
+        ),
+        encoding="utf-8",
+    )
+    RUNTIME_HELPERS.install_manifest(manifest, state, bridge)
     return directory, steam, state
 
 
@@ -288,7 +325,8 @@ def main():
             assert runtimes["count"] == 1
             runtime = runtimes["runtimes"][0]
             assert runtime["id"] == "gamehub-container-2"
-            assert runtime["status"] == "ready"
+            assert runtime["status"] == "incomplete"
+            assert any(check["id"] == "runtime-package" and check["status"] == "missing" for check in runtime["checks"])
             assert runtime["wine_root"] == str(runtime_home / "Library/Application Support/com.gamemac.www/wine-engine/containers/wine_installations/10000073")
             assert runtime["prefix_base"] == str(runtime_home / "Library/Application Support/com.gamemac.www/wine-engine/containers/base_containers/1")
         finally:

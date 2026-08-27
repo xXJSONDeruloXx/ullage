@@ -43,6 +43,11 @@ versioned CLI can set or clear that directive while Steam is stopped; native
 Cloud remains Steam-owned and Ullage does not fake the Cloud badge or implement
 a second transfer service.
 
+New machines can fetch the pinned public bridge release with
+`bin/ullagectl runtime fetch`; `bin/ullagectl doctor` reports remaining
+host-provided Wine/GPTK/prefix gaps, and `bin/ullagectl smoke` preflights the
+known-good 32-bit and x64-forwarder matrix controls.
+
 ## Start here
 
 Read [Usage](docs/usage.md) for prerequisites and commands. Run the local

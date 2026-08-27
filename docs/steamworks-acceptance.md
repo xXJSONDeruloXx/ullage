@@ -120,6 +120,15 @@ x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Werror -o /tmp/ullage-probe64.exe tool
 i686-w64-mingw32-gcc -O2 -Wall -Wextra -Werror -o /tmp/ullage-probe32.exe tools/ullage-steamworks-probe.c
 ~~~
 
+The probe accepts both the newer `SteamInternal_CreateInterface` export and
+the legacy `SteamClient` export found in older game API DLLs. On the current
+fresh state, copied TIS-100 and EXAPUNKS API DLLs loaded through an ordinary
+shell-launched bridge but exited with Wine status 5 during `SteamAPI_Init`.
+Because those diagnostic processes were not launched by Steam's Play action,
+that result is recorded as a probe-environment limitation, not as a shipped
+game feature failure. The native TIS-100 Play run remains the current 32-bit
+transport/Stop control.
+
 On the current Katamari depot, the 32-bit and 64-bit probes returned
 `SteamAPI_Init`, a logged-on identity, matching AppID, subscription/ownership,
 DLC count, achievement enumeration, and `SteamAPI_Shutdown`. The x64 run uses
