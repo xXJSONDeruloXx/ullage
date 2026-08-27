@@ -1054,3 +1054,16 @@ Stop with clean prefixes. Cloud evaluated the mapped `WinAppDataLocalLow`
 root but watched zero files on each fresh run. Steam uninstalled the depot with
 `No Error`, and Ullage removed the mapping. Treat the selector/input issue as
 a host capture boundary, not a title-specific source workaround.
+
+### 32. Titles without a supported Windows Cloud root use ordinary mapping mode
+
+198X (AppID `1086010`) supplied a fresh 500.66 MB x64 control using the
+current public package `2026.08.26-3`. Its appinfo record had no recognized
+Windows Auto-Cloud root. The explicit `ullagectl plan --cloud-native` command
+therefore returned the expected non-recoverable `no supported Windows Cloud
+root` error. Retrying the same plan and install without `--cloud-native`
+created a healthy launch mapping, and native Steam rendered the 198X menu on
+two Play cycles. Both native Stop cycles and cleanup passed; Steam uninstall
+returned `No Error` and Ullage removed the mapping. The lesson is to treat
+Cloud support as a per-title capability, not as a prerequisite for the normal
+Steam launch path.
