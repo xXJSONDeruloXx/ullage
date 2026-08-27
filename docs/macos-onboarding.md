@@ -509,10 +509,10 @@ artifact package staged at:
 ```
 
 It contains the x86_64 Unix sidecar, the i386 and x86_64 Windows bridges, and
-the canonical-name x64 Steam client forwarder. The same package is published
-from `ullage-patches` as release `runtime-macos-2026-08-26`. No full Proton
-distribution build was needed; the scoped lsteamclient components were enough
-for the known-good game validation.
+the canonical-name x64 Steam client forwarder. No full Proton distribution
+build was needed; the scoped lsteamclient components were enough for this
+known-good game validation. The later checksum-verified package and release
+gate are recorded in section 15.
 
 TIS-100 (AppID `370360`) was then mapped with `ullage-install` into GameHub's
 container 2 using its recorded base prefix, `WINEARCH=win64`, and SandboxFS
@@ -622,10 +622,11 @@ acceptance contract:
 The internal disk started near exhaustion at roughly 1--2 GB free. Disposable
 Steam caches, ignored build outputs, old Downloads artifacts, Docker's unused
 builder cache, and re-downloadable language/app caches were removed or moved
-to `/Volumes/NO NAME` archives. This recovered roughly 10 GB of headroom and
-left about 12 GB free. Project source, active toolchains, Android/Notion data,
-Codex state, and Docker images were retained; the desired 20 GB target was
-not pursued by deleting data with unclear ownership.
+to `/Volumes/NO NAME` archives. This recovered roughly 10 GB of headroom; the
+final audit after package staging measured about 9 GB free. Project source,
+active toolchains, Android/Notion data, Codex state, and Docker images were
+retained; the desired 20 GB target was not pursued by deleting data with
+unclear ownership.
 
 ### 15. Reproducible bridge package
 
@@ -648,5 +649,5 @@ The package was installed and verified on this Mac, then tested against the
 known-good TIS-100 matrix row (AppID `370360`). The game process loaded the
 packaged x86 lsteamclient and Steam API, native Steam showed Running and the
 Stop confirmation returned it to Play, and the receipt recorded a clean Wine
-prefix. The release is therefore eligible for publication as tag
-`runtime-macos-2026-08-26-3` in `ullage-patches`.
+prefix. The package was published as tag `runtime-macos-2026-08-26-3` in
+`ullage-patches`.
