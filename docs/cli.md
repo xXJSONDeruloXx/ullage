@@ -67,7 +67,13 @@ metadata present in Steam's local AppInfo cache but no installed manifest.
 AppInfo is intentionally used here because it is available to a packaged GUI
 without walking privacy-protected account directories; cached entries are not
 an ownership proof. The GUI should use the search and filter controls when the
-cache is large. Game state is one of:
+cache is large. Installed game records also include `launch_parameters`, the
+persisted compatibility values consumed by the generated launcher. This
+includes the Wine environment knobs (`wine_debug`, `winemsync`, `wine_dllpath`,
+and `wine_dll_overrides`), launch selection, prefix/architecture, Steam
+transport, legacy/client-runtime paths, logging, and native Cloud overrides. A
+GUI should round-trip this object through `install` rather than parse the
+generated shell config. Game state is one of:
 
 * `not_installed` — a Windows-capable cached game is not installed locally.
 * `ready` — the recorded Ullage mapping is intact and at least one Windows PE

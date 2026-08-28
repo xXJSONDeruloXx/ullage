@@ -28,6 +28,22 @@ def load(name, path):
 APPINFO_TEST = load("metadata_appinfo_test", ROOT / "tests" / "test_appinfo.py")
 ULLAGE = load("metadata_ullage", ROOT / "bin" / "ullage")
 
+parameters = ULLAGE.launch_parameters(
+    {
+        "WINEDLLPATH_VALUE": "/wine/lib",
+        "WINEDLLOVERRIDES_VALUE": "lsteamclient=b",
+        "WINE_DEBUG_VALUE": "-all",
+        "WINEMSYNC_VALUE": "1",
+        "LEGACY_STEAM": "0",
+        "PRESERVE_STEAM_TRANSPORT": "1",
+        "CLOUD_NATIVE": "1",
+    }
+)
+assert parameters["wine_dllpath"] == "/wine/lib"
+assert parameters["wine_dll_overrides"] == "lsteamclient=b"
+assert parameters["wine_debug"] == "-all"
+assert parameters["cloud_native"] is True
+
 
 def args(steam_root, state_root, command="status", restart_steam=False):
     return Namespace(

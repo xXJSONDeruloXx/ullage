@@ -1100,6 +1100,39 @@ def cloud_record(appinfo, appid: int, config: dict[str, str], state_root: Path) 
     }
 
 
+def launch_parameters(config: dict[str, str]) -> dict:
+    """Expose the persisted compatibility knobs without exposing raw shell state."""
+
+    string_values = {
+        "game_dir": config.get("GAME_DIR") or None,
+        "launch_entry": config.get("LAUNCH_ENTRY") or None,
+        "arch": config.get("ARCH") or None,
+        "wine_dllpath": config.get("WINEDLLPATH_VALUE") or None,
+        "wine_dll_overrides": config.get("WINEDLLOVERRIDES_VALUE") or None,
+        "wine_prefix_base": config.get("WINEPREFIX_BASE_VALUE") or None,
+        "wine_arch": config.get("WINE_ARCH_VALUE") or None,
+        "sandboxfs_manifest": config.get("SANDBOXFS_LAYER_MANIFEST_VALUE") or None,
+        "sandboxfs_lib": config.get("SANDBOXFS_LIB_PATH_VALUE") or None,
+        "steamclient64_forwarder": config.get("STEAMCLIENT64_FORWARDER") or None,
+        "steam_client_root": config.get("STEAM_CLIENT_ROOT") or None,
+        "log": config.get("LOG_FILE") or None,
+        "wine_debug": config.get("WINE_DEBUG_VALUE") or None,
+        "winemsync": config.get("WINEMSYNC_VALUE") or None,
+        "cloud_wine_user": config.get("CLOUD_WINE_USER") or None,
+        "cloud_steam3_account_id": config.get("CLOUD_STEAM3_ACCOUNT_ID") or None,
+        "cloud_native_platform": config.get("CLOUD_NATIVE_PLATFORM") or None,
+        "cloud_native_base": config.get("CLOUD_NATIVE_BASE") or None,
+        "cloud_native_addpath_root": config.get("CLOUD_NATIVE_ADDPATH_ROOT") or None,
+        "cloud_steam_account_name": config.get("CLOUD_STEAM_ACCOUNT_NAME") or None,
+    }
+    return {
+        **string_values,
+        "legacy_steam": config.get("LEGACY_STEAM") == "1",
+        "preserve_steam_transport": config.get("PRESERVE_STEAM_TRANSPORT", "1") == "1",
+        "cloud_native": config.get("CLOUD_NATIVE") == "1",
+    }
+
+
 def mapping_record(appid: int, steam_root: Path, state_root: Path) -> tuple[dict, dict, dict]:
     paths = MAPPING._paths(state_root, appid)
     try:
@@ -1176,6 +1209,7 @@ def game_record(
             "runtime_id": config.get("RUNTIME_ID"),
             "runtime_package": runtime_package,
         },
+        "launch_parameters": launch_parameters(config),
         "cloud": cloud_record(appinfo, appid, config, state_root) if appinfo else {
             "mode": "not_configured",
             "status": "unavailable",
