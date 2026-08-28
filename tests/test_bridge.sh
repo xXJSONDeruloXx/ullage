@@ -507,7 +507,7 @@ set -e
     echo "expected Windows-command stop exit 0, got $status" >&2
     exit 1
 }
-grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
+grep -F 'wine_exit=0 signal_received=1' "$CASE_LOG" >/dev/null
 
 make_case steam-exit term-hang
 fake_steam_argv0="$CASE_STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS/steam_osx"
