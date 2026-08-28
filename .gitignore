@@ -8,3 +8,5 @@ bin/ullage-fd-exec
 bin/__pycache__/
 tests/__pycache__/
 .DS_Store
+# Native Steam may write this transient host-cache file relative to its cwd.
+update_hosts_cached.vdf

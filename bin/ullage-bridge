@@ -68,6 +68,8 @@ WINEPREFIX_BASE_VALUE="${WINEPREFIX_BASE_VALUE:-${WINEPREFIX_BASE:-}}"
 WINE_ARCH_VALUE="${WINE_ARCH_VALUE:-${WINEARCH:-}}"
 GPTK_ROOT="${GPTK_ROOT:-}"
 BRIDGE_ROOT="${BRIDGE_ROOT:-$REPO_ROOT/runtime/lsteamclient}"
+NATIVE_SESSION_HELPER="${ULLAGE_NATIVE_SESSION_HELPER:-$SCRIPT_DIR/ullage-native-steam-session.dylib}"
+NATIVE_SESSION_MODE="${ULLAGE_NATIVE_SESSION:-auto}"
 RUNTIME_PACKAGE_ID="${RUNTIME_PACKAGE_ID:-${ULLAGE_RUNTIME_PACKAGE_ID:-}}"
 RUNTIME_PACKAGE_VERSION="${RUNTIME_PACKAGE_VERSION:-${ULLAGE_RUNTIME_PACKAGE_VERSION:-}}"
 RUNTIME_MANIFEST="${RUNTIME_MANIFEST:-${ULLAGE_RUNTIME_MANIFEST:-}}"
@@ -309,6 +311,10 @@ case "$WINE_ARCH_VALUE" in
     ''|win32|win64) ;;
     *) die "invalid --wine-arch value: $WINE_ARCH_VALUE" ;;
 esac
+case "$NATIVE_SESSION_MODE" in
+    auto|1|0|off) ;;
+    *) die "invalid ULLAGE_NATIVE_SESSION value: $NATIVE_SESSION_MODE" ;;
+esac
 
 WINE_BIN="$WINE_ROOT/bin/wine"
 WINESERVER="$WINE_ROOT/bin/wineserver"
@@ -445,6 +451,16 @@ if [ -n "$SANDBOXFS_LIB_PATH_VALUE" ]; then
         DYLD_INSERT_LIBRARIES_VALUE=$SANDBOXFS_LIB_PATH_VALUE
     fi
 fi
+NATIVE_SESSION_ACTIVE=0
+if [ "$NATIVE_SESSION_MODE" != 0 ] && [ "$NATIVE_SESSION_MODE" != off ] &&
+    [ -f "$NATIVE_SESSION_HELPER" ]; then
+    if [ -n "$DYLD_INSERT_LIBRARIES_VALUE" ]; then
+        DYLD_INSERT_LIBRARIES_VALUE="$DYLD_INSERT_LIBRARIES_VALUE:$NATIVE_SESSION_HELPER"
+    else
+        DYLD_INSERT_LIBRARIES_VALUE=$NATIVE_SESSION_HELPER
+    fi
+    NATIVE_SESSION_ACTIVE=1
+fi
 STEAM_CLIENT_CONFIG_FILE_VALUE=${STEAM_CLIENT_CONFIG_FILE:-}
 STEAM_APP_BUNDLE_PATH_VALUE=${STEAM_APP_BUNDLE_PATH:-}
 ENABLE_VK_LAYER_STEAM_OVERLAY_VALUE=${ENABLE_VK_LAYER_VALVE_steam_overlay_1:-}
@@ -476,6 +492,8 @@ fi
     printf '[ullage-bridge] sandboxfs_manifest=%s\n' "$SANDBOXFS_LAYER_MANIFEST_VALUE"
     printf '[ullage-bridge] sandboxfs_lib=%s\n' "$SANDBOXFS_LIB_PATH_VALUE"
     printf '[ullage-bridge] dyld_insert_libraries=%s\n' "$DYLD_INSERT_LIBRARIES_VALUE"
+    printf '[ullage-bridge] native_session_helper=%s active=%s mode=%s\n' \
+        "$NATIVE_SESSION_HELPER" "$NATIVE_SESSION_ACTIVE" "$NATIVE_SESSION_MODE"
     printf '[ullage-bridge] steam_virtual_gamepad_metadata=%s\n' "$STEAM_VIRTUAL_GAMEPAD_PRESENT"
 } >>"$LOG_FILE" 2>&1
 
@@ -752,6 +770,9 @@ write_receipt() {
     ULLAGE_RECEIPT_RUNTIME_PACKAGE_VERSION="$RUNTIME_PACKAGE_VERSION" \
     ULLAGE_RECEIPT_RUNTIME_MANIFEST="$RUNTIME_MANIFEST" \
     ULLAGE_RECEIPT_RUNTIME_MANIFEST_SHA256="$RUNTIME_MANIFEST_SHA256" \
+    ULLAGE_RECEIPT_NATIVE_SESSION_HELPER="$NATIVE_SESSION_HELPER" \
+    ULLAGE_RECEIPT_NATIVE_SESSION_ACTIVE="$NATIVE_SESSION_ACTIVE" \
+    ULLAGE_RECEIPT_NATIVE_SESSION_MODE="$NATIVE_SESSION_MODE" \
     ULLAGE_RECEIPT_STARTED="$SESSION_STARTED" \
     ULLAGE_RECEIPT_WINE_EXIT="$wine_exit_value" \
     ULLAGE_RECEIPT_SIGNAL="$SIGNAL_RECEIVED" \
@@ -787,6 +808,11 @@ receipt = {
         "version": os.environ.get("ULLAGE_RECEIPT_RUNTIME_PACKAGE_VERSION") or None,
         "manifest": os.environ.get("ULLAGE_RECEIPT_RUNTIME_MANIFEST") or None,
         "manifest_sha256": os.environ.get("ULLAGE_RECEIPT_RUNTIME_MANIFEST_SHA256") or None,
+    },
+    "native_session": {
+        "helper": os.environ.get("ULLAGE_RECEIPT_NATIVE_SESSION_HELPER") or None,
+        "active": boolean("ULLAGE_RECEIPT_NATIVE_SESSION_ACTIVE"),
+        "mode": os.environ.get("ULLAGE_RECEIPT_NATIVE_SESSION_MODE") or None,
     },
     "started": os.environ.get("ULLAGE_RECEIPT_STARTED"),
     "ended": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
