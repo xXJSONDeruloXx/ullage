@@ -88,6 +88,7 @@ bin/ullagectl smoke --json
 bin/ullagectl steam set-depot-mode windows --json
 bin/ullagectl metadata status APPID --json
 bin/ullagectl metadata reconcile APPID --json
+bin/ullagectl metadata reconcile APPID --restart-steam --json
 ~~~
 
 The separate GUI should call `ullagectl` only. It should use the returned
@@ -97,7 +98,10 @@ response fields, states, error codes, and mutation behavior.
 
 Repeated checks should use `metadata reconcile` or `install --if-needed`.
 Healthy mappings are returned as no-ops and do not require a Steam restart;
-only a real stale metadata repair reports that a restart is required.
+only a real stale metadata repair needs the Steam lifecycle boundary. Use
+`--restart-steam` when Ullage should quit and relaunch Steam itself, verify
+Steam Helper and the fresh AppInfo read, and return with native Play and Stop
+ready.
 
 ## Install
 
@@ -163,10 +167,12 @@ Use these options only when needed:
 * `--cloud-steam-account-name NAME` selects a login record when Steam has more
   than one account.
 
-Restart Steam after installation and press its ordinary Play button. The
-generated launcher receives Steam's arguments. The bridge waits for the exact
-Wine launcher, waits for the selected prefix's Wine session to become idle,
-and then reaps only prefix-owned helpers.
+After installation, press Steam's ordinary Play button. With
+`install --restart-steam`, Ullage performs the required Steam lifecycle and
+waits for Steam Helper plus the fresh AppInfo read before returning; the
+generated launcher then receives Steam's arguments. The bridge waits for the
+exact Wine launcher, waits for the selected prefix's Wine session to become
+idle, and then reaps only prefix-owned helpers.
 
 `--cloud-native` is the supported native Auto-Cloud path. It maps Windows UFS
 roots into the prefix and leaves transfer, hashing, conflict handling, and the
@@ -197,7 +203,8 @@ agree. `stale` means Steam restored the native executable; `foreign` means a
 different local change owns the entry; `broken` means generated state is
 incomplete.
 
-After fully quitting Steam, repair a stale mapping atomically:
+Repair a stale mapping atomically. The explicit low-level path still requires
+Steam to be fully quit:
 
 ~~~sh
 "$HOME/Developer/ullage/bin/ullage-mapping.py" repair \
@@ -208,7 +215,9 @@ After fully quitting Steam, repair a stale mapping atomically:
 Repair backs up appinfo under `~/.ullage/backups/appinfo`, uses the recorded
 entry as an optimistic concurrency check, and refuses to overwrite a foreign
 mapping unless `--force` is explicit. It does not recreate missing runtime
-state; reinstall or restore that state first.
+state; reinstall or restore that state first. The `ullagectl repair APPID
+--restart-steam` facade manages the quit, repair, relaunch, and AppInfo-read
+verification as one operation.
 
 ## Remove
 

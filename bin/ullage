@@ -34,6 +34,7 @@ CAPABILITIES = [
     "steam_depot_mode",
     "library_catalog",
     "steam_stop_watch",
+    "steam_session_management",
     "structured_diagnostics",
     "runtime_packages",
     "runtime_fetch",
@@ -63,6 +64,7 @@ MAPPING = load_module("ullage_mapping_cli", "ullage-mapping.py")
 CLOUD = load_module("ullage_cloud_cli", "ullage-cloud-native.py")
 RUNTIME = load_module("ullage_runtime_cli", "ullage-runtime.py")
 HOST_RUNTIME = load_module("ullage_host_runtime_cli", "ullage-host-runtime.py")
+STEAM_SESSION = load_module("ullage_steam_session_cli", "ullage-steam-session.py")
 
 
 class CLIError(Exception):
@@ -78,6 +80,7 @@ def output(command: str, payload: dict, ok: bool = True) -> int:
 
 RECOVERABLE_ERRORS = {
     "steam_running",
+    "steam_session",
     "steam_not_found",
     "windows_depot_missing",
     "mapping_stale",
@@ -1878,8 +1881,8 @@ def install_arguments(args: argparse.Namespace) -> list[str]:
 
 
 def command_install(args: argparse.Namespace) -> int:
+    appid = resolve_appid(args)
     if getattr(args, "if_needed", False):
-        appid = resolve_appid(args)
         try:
             metadata = metadata_record(args, appid)
         except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError) as exc:
@@ -1895,53 +1898,81 @@ def command_install(args: argparse.Namespace) -> int:
                     "mapping": metadata["mapping"],
                 },
             )
-    if steam_running():
+
+    requested_session = getattr(args, "restart_steam", False)
+    session = None
+    if requested_session:
+        try:
+            session = {"requested": True, "stopped": STEAM_SESSION.stop()}
+        except STEAM_SESSION.SteamSessionError as exc:
+            return failure("install", str(exc), "steam_session", appid)
+    elif steam_running():
         return failure(
             "install",
             "Native Steam must be fully quit before installing a mapping.",
             "steam_running",
-            resolve_appid(args),
+            appid,
         )
+
+    error_message = None
+    error_code = None
+    payload = None
     try:
         record, profile = resolve_install(args)
     except CLIError as exc:
-        return failure("install", str(exc), appid=getattr(args, "appid", None))
-    if not args.wine_root or not args.gptk_root or not args.bridge_root:
-        return failure("install", "The selected runtime is incomplete.", "runtime_incomplete", args.appid)
-    try:
-        install_environment = os.environ.copy()
-        install_environment["ULLAGE_RUNTIME_ID"] = profile["id"]
-        package = profile.get("runtime_package") or {}
-        for environment_name, package_name in (
-            ("ULLAGE_RUNTIME_PACKAGE_ID", "runtime_id"),
-            ("ULLAGE_RUNTIME_PACKAGE_VERSION", "version"),
-            ("ULLAGE_RUNTIME_MANIFEST", "manifest"),
-            ("ULLAGE_RUNTIME_MANIFEST_SHA256", "manifest_sha256"),
-        ):
-            value = package.get(package_name)
-            if value:
-                install_environment[environment_name] = str(value)
-        result = run(
-            [str(SCRIPT_DIR / "ullage-install"), *install_arguments(args)],
-            env=install_environment,
-        )
-    except CLIError as exc:
-        return failure("install", str(exc), appid=args.appid)
-    if result.returncode != 0:
-        message = (result.stderr or result.stdout).strip() or f"ullage-install exited {result.returncode}"
-        return failure("install", message, appid=args.appid)
-    steam_root = expand(args.steam_root)
-    state_root = expand(args.state_dir)
-    appinfo = load_appinfo(steam_root)
-    game = installed_game(steam_root, args.appid)
-    payload = {
-        "appid": args.appid,
-        "message": "mapping installed",
-        "output": result.stdout.strip(),
-        "runtime": profile,
-    }
-    if game:
-        payload["game"] = game_record(game, appinfo, steam_root, state_root)
+        error_message = str(exc)
+    else:
+        if not args.wine_root or not args.gptk_root or not args.bridge_root:
+            error_message = "The selected runtime is incomplete."
+            error_code = "runtime_incomplete"
+        else:
+            try:
+                install_environment = os.environ.copy()
+                install_environment["ULLAGE_RUNTIME_ID"] = profile["id"]
+                package = profile.get("runtime_package") or {}
+                for environment_name, package_name in (
+                    ("ULLAGE_RUNTIME_PACKAGE_ID", "runtime_id"),
+                    ("ULLAGE_RUNTIME_PACKAGE_VERSION", "version"),
+                    ("ULLAGE_RUNTIME_MANIFEST", "manifest"),
+                    ("ULLAGE_RUNTIME_MANIFEST_SHA256", "manifest_sha256"),
+                ):
+                    value = package.get(package_name)
+                    if value:
+                        install_environment[environment_name] = str(value)
+                result = run(
+                    [str(SCRIPT_DIR / "ullage-install"), *install_arguments(args)],
+                    env=install_environment,
+                )
+            except CLIError as exc:
+                error_message = str(exc)
+            else:
+                if result.returncode != 0:
+                    error_message = (result.stderr or result.stdout).strip() or f"ullage-install exited {result.returncode}"
+                else:
+                    steam_root = expand(args.steam_root)
+                    state_root = expand(args.state_dir)
+                    appinfo = load_appinfo(steam_root)
+                    game = installed_game(steam_root, appid)
+                    payload = {
+                        "appid": appid,
+                        "message": "mapping installed",
+                        "output": result.stdout.strip(),
+                        "runtime": profile,
+                        "changed": True,
+                        "restart_required": session is None,
+                    }
+                    if game:
+                        payload["game"] = game_record(game, appinfo, steam_root, state_root)
+
+    if session is not None:
+        try:
+            session["started"] = STEAM_SESSION.start(args.steam_root)
+        except STEAM_SESSION.SteamSessionError as exc:
+            return failure("install", str(exc), "steam_session", appid)
+        if payload is not None:
+            payload["steam_session"] = session
+    if error_message is not None:
+        return failure("install", error_message, error_code, appid)
     return output("install", payload)
 
 
@@ -1972,32 +2003,53 @@ def command_repair(args: argparse.Namespace) -> int:
                     "mapping": inspected,
                 },
             )
-        if steam_running():
+        session = None
+        if getattr(args, "restart_steam", False):
+            try:
+                session = {"requested": True, "stopped": STEAM_SESSION.stop()}
+            except STEAM_SESSION.SteamSessionError as exc:
+                return failure("repair", str(exc), "steam_session", appid)
+        elif steam_running():
             return failure(
                 "repair",
                 "Native Steam must be fully quit before repairing a stale mapping.",
                 "steam_running",
                 appid,
             )
-        result = MAPPING.repair_mapping(
-            steam_root / "appcache/appinfo.vdf",
-            paths["state_file"],
-            paths["config_file"],
-            paths["launcher"],
-            state_root / "backups/appinfo",
-            force=args.force,
-            expected_appid=appid,
-        )
+        try:
+            result = MAPPING.repair_mapping(
+                steam_root / "appcache/appinfo.vdf",
+                paths["state_file"],
+                paths["config_file"],
+                paths["launcher"],
+                state_root / "backups/appinfo",
+                force=args.force,
+                check_steam=False if session is not None else True,
+                expected_appid=appid,
+            )
+        except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError):
+            if session is not None:
+                try:
+                    STEAM_SESSION.start(args.steam_root)
+                except STEAM_SESSION.SteamSessionError:
+                    pass
+            raise
     except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError) as exc:
         return failure("repair", str(exc), appid=appid)
+    if session is not None:
+        try:
+            session["started"] = STEAM_SESSION.start(args.steam_root)
+        except STEAM_SESSION.SteamSessionError as exc:
+            return failure("repair", str(exc), "steam_session", appid)
     return output(
         "repair",
         {
             "appid": appid,
             "message": "mapping repaired",
             "changed": True,
-            "restart_required": True,
+            "restart_required": session is None,
             "mapping": result,
+            **({"steam_session": session} if session is not None else {}),
         },
     )
 
@@ -2042,7 +2094,13 @@ def command_metadata(args: argparse.Namespace) -> int:
             action="noop",
         )
         return output("metadata reconcile", record)
-    if steam_running():
+    session = None
+    if getattr(args, "restart_steam", False):
+        try:
+            session = STEAM_SESSION.stop()
+        except STEAM_SESSION.SteamSessionError as exc:
+            return failure("metadata reconcile", str(exc), "steam_session", appid)
+    elif steam_running():
         return failure(
             "metadata reconcile",
             "Native Steam must be fully quit before reconciling stale metadata.",
@@ -2064,15 +2122,29 @@ def command_metadata(args: argparse.Namespace) -> int:
             expected_appid=appid,
         )
     except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError) as exc:
+        if session is not None:
+            try:
+                STEAM_SESSION.start(args.steam_root)
+            except STEAM_SESSION.SteamSessionError:
+                pass
         return failure("metadata reconcile", str(exc), appid=appid)
+    if session is not None:
+        try:
+            session["started"] = STEAM_SESSION.start(args.steam_root)
+        except STEAM_SESSION.SteamSessionError as exc:
+            return failure("metadata reconcile", str(exc), "steam_session", appid)
     record.update(
         message="stale metadata reconciled",
         action="reconciled",
         changed=True,
-        restart_required=True,
-        requires_steam_stopped=True,
         mapping=repaired,
+        mapping_status=repaired.get("status"),
+        restart_required=session is None,
+        requires_steam_stopped=session is None,
     )
+    if session is not None:
+        record["steam_session"] = session
+        record["steam_process"] = steam_status(steam_root)["process"]
     return output("metadata reconcile", record)
 
 
@@ -2337,6 +2409,11 @@ def add_install_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="return success without touching Steam metadata when the mapping is healthy",
     )
+    parser.add_argument(
+        "--restart-steam",
+        action="store_true",
+        help="gracefully restart Steam around a first install or metadata update",
+    )
 
 
 def add_plan_options(parser: argparse.ArgumentParser) -> None:
@@ -2379,6 +2456,11 @@ def parser() -> argparse.ArgumentParser:
     add_context(repair)
     add_appid(repair)
     repair.add_argument("--force", action="store_true")
+    repair.add_argument(
+        "--restart-steam",
+        action="store_true",
+        help="gracefully restart Steam around a stale-mapping repair",
+    )
     metadata = commands.add_parser(
         "metadata", help="inspect or reconcile Ullage-owned Steam metadata"
     )
@@ -2392,6 +2474,11 @@ def parser() -> argparse.ArgumentParser:
     add_context(metadata_reconcile)
     add_appid(metadata_reconcile)
     metadata_reconcile.add_argument("--force", action="store_true")
+    metadata_reconcile.add_argument(
+        "--restart-steam",
+        action="store_true",
+        help="gracefully restart Steam around a real stale-metadata repair",
+    )
     remove = commands.add_parser("remove", help="restore a Steam launch mapping")
     add_context(remove)
     add_appid(remove)

@@ -96,9 +96,11 @@ Mutating commands are:
 ~~~sh
 bin/ullagectl install APPID --runtime RUNTIME_ID --json
 bin/ullagectl repair APPID --json
+bin/ullagectl repair APPID --restart-steam --json
 bin/ullagectl remove APPID --json
 bin/ullagectl metadata status APPID --json
 bin/ullagectl metadata reconcile APPID --json
+bin/ullagectl metadata reconcile APPID --restart-steam --json
 bin/ullagectl runtime fetch --json
 bin/ullagectl runtime host-fetch --json
 bin/ullagectl runtime rollback --json
@@ -120,7 +122,16 @@ is running, so routine UI refreshes do not cause metadata writes or Steam
 restarts. `metadata status` and `metadata reconcile` expose the same policy
 explicitly. Reconcile repairs only stale Ullage-owned state, refuses to write
 under a live Steam client, and reports `restart_required` after a successful
-write because Steam caches AppInfo in memory.
+write because Steam caches AppInfo in memory. The `--restart-steam` option
+turns this into a managed transaction: Ullage quits Steam safely, writes the
+mapping, relaunches Steam, and waits for Steam Helper and a fresh AppInfo
+read. The returned `steam_session.started.ready` field is the readiness signal
+for a GUI to enable ordinary Play and Stop actions. `install --restart-steam`
+uses the same lifecycle for a first mapping install, so a newly configured
+title returns with the native Steam controls ready.
+
+The `capabilities` response includes `steam_session_management` when this
+managed lifecycle is available.
 
 All mutations enforce the same invariant as the lower-level tools: native
 Steam must be fully stopped while `appcache/appinfo.vdf` is changed. The GUI

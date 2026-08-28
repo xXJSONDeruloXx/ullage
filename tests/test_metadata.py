@@ -29,7 +29,7 @@ APPINFO_TEST = load("metadata_appinfo_test", ROOT / "tests" / "test_appinfo.py")
 ULLAGE = load("metadata_ullage", ROOT / "bin" / "ullage")
 
 
-def args(steam_root, state_root, command="status"):
+def args(steam_root, state_root, command="status", restart_steam=False):
     return Namespace(
         appid_pos=42,
         appid_option=None,
@@ -37,6 +37,7 @@ def args(steam_root, state_root, command="status"):
         state_dir=str(state_root),
         metadata_command=command,
         force=False,
+        restart_steam=restart_steam,
     )
 
 
@@ -124,5 +125,46 @@ with tempfile.TemporaryDirectory(prefix="ullage-metadata.") as directory:
         assert list((state_root / "backups" / "appinfo").glob("42-repair-*.vdf"))
     finally:
         ULLAGE.steam_running = original_steam_running
+
+    restored = APPINFO_TEST.MODULE.AppInfo(appinfo_file)
+    restored.replace_launch(42, "Game.exe", expect=state["installed"])
+    restored.write(appinfo_file)
+
+    class FakeSteamSession:
+        def __init__(self):
+            self.stopped = 0
+            self.started = 0
+
+        def stop(self):
+            self.stopped += 1
+            return {"was_running": True, "stopped": True}
+
+        def start(self, steam_root):
+            self.started += 1
+            return {
+                "started": True,
+                "ready": True,
+                "appinfo_loaded": True,
+                "steam_helper": True,
+                "pids": [101],
+            }
+
+    original_session = ULLAGE.STEAM_SESSION
+    fake_session = FakeSteamSession()
+    ULLAGE.STEAM_SESSION = fake_session
+    try:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            assert ULLAGE.command_metadata(args(steam, state_root, "reconcile", True)) == 0
+        payload = json.loads(output.getvalue())
+        assert payload["changed"] is True
+        assert payload["mapping_status"] == "healthy"
+        assert payload["restart_required"] is False
+        assert payload["requires_steam_stopped"] is False
+        assert payload["steam_session"]["started"]["ready"] is True
+        assert fake_session.stopped == 1
+        assert fake_session.started == 1
+    finally:
+        ULLAGE.STEAM_SESSION = original_session
 
 print("metadata reconciliation: ok")

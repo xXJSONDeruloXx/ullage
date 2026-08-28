@@ -90,10 +90,13 @@ Steam may rewrite `appcache/appinfo.vdf` during metadata refreshes or client
 updates. Ullage treats the mapping as local and repeatable: install records a
 private backup, status detects stale or foreign state, repair uses an optimistic
 concurrency check, and remove restores the recorded native entry. The
-restart-aware metadata reconciler makes healthy state a no-op, refuses stale
-writes under a live client, and reports when a real change still needs one
-client restart to invalidate Steam's in-memory cache. Ullage does not rely on
-an undocumented live appinfo reload.
+restart-aware metadata reconciler makes healthy state a no-op and never relies
+on an undocumented live appinfo reload. For stale state, the default path
+refuses writes under a live client and reports the required lifecycle boundary.
+The opt-in managed path quits Steam, performs the atomic transaction, relaunches
+Steam, and verifies Steam Helper plus a fresh AppInfo read before reporting the
+mapping ready. First installs can use the same path, leaving native Play and
+Stop actions ready when the install command returns.
 
 The state root is separate from the checkout:
 
