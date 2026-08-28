@@ -282,7 +282,32 @@ def make_runtime_fixture():
     return directory, home, bridge
 
 
+def test_prefix_template_relocation():
+    with tempfile.TemporaryDirectory(prefix="ullage-prefix-relocation.") as directory:
+        root = Path(directory)
+        runtime = root / "wine"
+        template = runtime / "prefix"
+        library = runtime / "lib/wine/x86_64-windows"
+        library.mkdir(parents=True)
+        template.joinpath("drive_c/windows/system32").mkdir(parents=True)
+        (template / "system.reg").write_text("registry\n", encoding="utf-8")
+        kernel = library / "kernel32.dll"
+        kernel.write_text("kernel32\n", encoding="utf-8")
+        (template / "drive_c/windows/system32/kernel32.dll").symlink_to(
+            "../../../../lib/wine/x86_64-windows/kernel32.dll"
+        )
+
+        destination = root / "state/compatdata/42/pfx"
+        result = ULLAGE.provision_prefix_template(template, destination)
+        assert result["status"] == "created"
+        relocated = destination / "drive_c/windows/system32/kernel32.dll"
+        assert relocated.is_symlink()
+        assert relocated.resolve() == kernel.resolve()
+        assert not ULLAGE._has_broken_symlink(destination)
+
+
 def main():
+    test_prefix_template_relocation()
     original_run = ULLAGE.run
     try:
         ULLAGE.run = lambda *args, **kwargs: subprocess.CompletedProcess(

@@ -1687,6 +1687,41 @@ def command_smoke(args: argparse.Namespace) -> int:
     return output("smoke", {"smoke": smoke})
 
 
+def _path_is_within(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def _relocate_runtime_symlinks(source: Path, destination: Path) -> None:
+    """Keep prefix links to a host runtime valid after relocating the prefix."""
+
+    source_root = source.parent.resolve()
+    for link in destination.rglob("*"):
+        if not link.is_symlink():
+            continue
+        relative = link.relative_to(destination)
+        source_link = source / relative
+        if not source_link.is_symlink():
+            continue
+        source_target = (source_link.parent / os.readlink(source_link)).resolve(strict=False)
+        # Wine templates commonly link prefix DLLs to ../lib/wine. Those links
+        # are valid in the host runtime's original wine/prefix layout but not
+        # after the per-AppID prefix is copied under ~/.ullage/compatdata.
+        # Preserve links internal to the prefix and links outside the runtime;
+        # only relocate links that escaped the template into its runtime root.
+        if not _path_is_within(source_target, source_root) or _path_is_within(source_target, source):
+            continue
+        link.unlink()
+        link.symlink_to(os.path.relpath(source_target, link.parent.resolve(strict=False)))
+
+
+def _has_broken_symlink(root: Path) -> bool:
+    return any(link.is_symlink() and not link.exists() for link in root.rglob("*"))
+
+
 def provision_prefix_template(template: str | Path, destination: str | Path) -> dict:
     """Copy a verified clean host template into an AppID-owned prefix."""
 
@@ -1699,14 +1734,19 @@ def provision_prefix_template(template: str | Path, destination: str | Path) -> 
     if target.exists():
         if not target.is_dir() or not (target / "system.reg").is_file():
             raise CLIError(f"AppID prefix exists but is not initialized: {target}")
+        if _has_broken_symlink(target):
+            raise CLIError(f"AppID prefix contains broken symlinks: {target}")
         return {"status": "existing", "template": str(source), "prefix": str(target)}
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.provision-", dir=target.parent))
     shutil.rmtree(temporary)
     try:
         shutil.copytree(source, temporary, symlinks=True)
+        _relocate_runtime_symlinks(source, temporary)
         if not (temporary / "system.reg").is_file():
             raise CLIError(f"copied prefix template is not initialized: {temporary}")
+        if _has_broken_symlink(temporary):
+            raise CLIError(f"copied prefix template contains broken symlinks: {temporary}")
         os.replace(temporary, target)
     except (OSError, CLIError) as exc:
         shutil.rmtree(temporary, ignore_errors=True)
