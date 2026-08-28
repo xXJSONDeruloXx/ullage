@@ -259,9 +259,10 @@ if [ -n "$STEAM_CLIENT_ROOT" ]; then
 fi
 
 CONFIG_DIR="$STATE_HOME/config/games"
-STEAM_CLIENT_MANIFEST="$CONFIG_DIR/$APP_ID.steam-client.json"
+STEAM_CLIENT_MANIFEST=
 STEAM_CLIENT_MANIFEST_TMP="$CONFIG_DIR/.${APP_ID}.steam-client.$$"
 if [ -n "$STEAM_CLIENT_ROOT" ]; then
+    STEAM_CLIENT_MANIFEST="$CONFIG_DIR/$APP_ID.steam-client.json"
     if [ -e "$STEAM_CLIENT_MANIFEST" ] && [ "$FORCE" -ne 1 ]; then
         die "generated Steam client manifest exists (use --force): $STEAM_CLIENT_MANIFEST"
     fi
