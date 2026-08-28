@@ -2,16 +2,21 @@ CC ?= clang
 CFLAGS ?= -O2 -Wall -Wextra -Werror
 PYTHON3 ?= python3
 
-.PHONY: all check integration clean native-probe
+.PHONY: all check integration clean native-probe native-session-probe
 
 all: bin/ullage-fd-exec
 
 native-probe: bin/ullage-native-steamclient-probe
 
+native-session-probe: bin/ullage-native-steamclient-session-probe
+
 bin/ullage-fd-exec: src/ullage-fd-exec.c
 	$(CC) $(CFLAGS) -arch arm64 -arch x86_64 -o $@ $<
 
 bin/ullage-native-steamclient-probe: tools/ullage-native-steamclient-probe.c
+	$(CC) $(CFLAGS) -arch arm64 -arch x86_64 -o $@ $<
+
+bin/ullage-native-steamclient-session-probe: tools/ullage-native-steamclient-session-probe.c
 	$(CC) $(CFLAGS) -arch arm64 -arch x86_64 -o $@ $<
 
 check:
@@ -42,5 +47,6 @@ integration: all
 clean:
 	@if test -e bin/ullage-fd-exec; then unlink bin/ullage-fd-exec; fi
 	@if test -e bin/ullage-native-steamclient-probe; then unlink bin/ullage-native-steamclient-probe; fi
+	@if test -e bin/ullage-native-steamclient-session-probe; then unlink bin/ullage-native-steamclient-session-probe; fi
 	@find bin/__pycache__ tests/__pycache__ -type f -name '*.pyc' -delete 2>/dev/null || true
 	@rmdir bin/__pycache__ tests/__pycache__ 2>/dev/null || true
