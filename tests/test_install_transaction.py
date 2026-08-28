@@ -113,7 +113,7 @@ def make_case(root, launches):
     }
 
 
-def install(case):
+def install(case, wine_dll_overrides=None):
     install = case["install"]
     command = [
         str(ROOT / "bin" / "ullage-install"),
@@ -136,6 +136,8 @@ def install(case):
         "--state-dir",
         str(case["state"]),
     ]
+    if wine_dll_overrides is not None:
+        command.extend(["--wine-dll-overrides", wine_dll_overrides])
     run(
         command,
         env={
@@ -266,11 +268,15 @@ def main():
     }
     with tempfile.TemporaryDirectory(prefix="ullage-install-single.") as directory:
         case = make_case(Path(directory), single)
-        install(case)
+        install(case, wine_dll_overrides="- amd_ags_x64=d;lsteamclient=b")
         launcher = case["state"] / "launchers" / "42.sh"
         assert f"--game-dir '{case['install'] / 'bin'}'" in launcher.read_text(
             encoding="utf-8"
         )
+        config = (case["state"] / "config" / "games" / "42.conf").read_text(
+            encoding="utf-8"
+        )
+        assert "WINEDLLOVERRIDES_VALUE='- amd_ags_x64=d;lsteamclient=b'" in config
         remove(case)
 
     print("installer transaction: ok")
