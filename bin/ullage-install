@@ -479,6 +479,7 @@ fi
     printf 'STATE_HOME=%s\n' "$(shell_quote "$STATE_HOME")"
     printf 'GAME_EXE=%s\n' "$(shell_quote "$TARGET")"
     printf 'GAME_DIR=%s\n' "$(shell_quote "$GAME_DIR")"
+    printf 'INSTALL_DIR=%s\n' "$(shell_quote "$INSTALL_DIR")"
     printf 'PREFIX=%s\n' "$(shell_quote "$PREFIX")"
     printf 'ARCH=%s\n' "$(shell_quote "$ARCH")"
     printf 'STEAM_ROOT=%s\n' "$(shell_quote "$STEAM_ROOT")"

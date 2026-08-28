@@ -81,7 +81,7 @@ make_case() {
     mkdir -p "$prefix" "$wine_root/bin" "$gptk_root/external" \
         "$bridge_root/x86_64-unix" "$bridge_root/i386-windows" \
         "$steam_root/Steam.AppBundle/Steam/Contents/MacOS" "$steam_root/logs" \
-        "$case_root/game"
+        "$case_root/game" "$case_root/game/launcher"
     if [ "$arch" = win64 ]; then
         mkdir -p "$bridge_root/x86_64-windows" \
             "$prefix/drive_c/Program Files (x86)/Steam"
@@ -105,7 +105,8 @@ make_case() {
     printf '%s\n' \
         "APP_ID='42'" \
         "GAME_EXE='$case_root/game/test.exe'" \
-        "GAME_DIR='$case_root/game'" \
+        "GAME_DIR='$case_root/game/launcher'" \
+        "INSTALL_DIR='$case_root/game'" \
         "PREFIX='$prefix'" \
         "ARCH='$arch'" \
         "STEAM_ROOT='$steam_root'" \

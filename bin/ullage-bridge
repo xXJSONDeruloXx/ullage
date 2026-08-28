@@ -61,6 +61,7 @@ CONFIG=
 APP_ID=
 GAME_EXE=
 GAME_DIR=
+INSTALL_DIR=${INSTALL_DIR:-}
 PREFIX=
 ARCH=auto
 STEAM_ROOT="${STEAM_ROOT:-$HOME_VALUE/Library/Application Support/Steam}"
@@ -282,6 +283,32 @@ else
 fi
 [ -d "$GAME_DIR" ] || die "game directory does not exist: $GAME_DIR"
 
+# A launcher may spawn a sibling executable and then exit. Keep supervision
+# scoped to the complete installed depot rather than only the launcher's
+# working directory. New configs carry INSTALL_DIR; older configs fall back to
+# the Steam common-library path when it can be derived from GAME_EXE.
+if [ -n "$INSTALL_DIR" ]; then
+    case "$INSTALL_DIR" in
+        /*) ;;
+        *) INSTALL_DIR=$(CDPATH= cd "$INSTALL_DIR" && pwd) ;;
+    esac
+    [ -d "$INSTALL_DIR" ] || die "install directory does not exist: $INSTALL_DIR"
+    GAME_ROOT=$(CDPATH= cd "$INSTALL_DIR" && pwd)
+else
+    GAME_ROOT=$GAME_DIR
+    case "$GAME_EXE" in
+        */steamapps/common/*/*)
+            common_parent=${GAME_EXE%%/steamapps/common/*}
+            common_relative=${GAME_EXE#"$common_parent/steamapps/common/"}
+            install_name=${common_relative%%/*}
+            derived_root="$common_parent/steamapps/common/$install_name"
+            if [ -d "$derived_root" ]; then
+                GAME_ROOT=$(CDPATH= cd "$derived_root" && pwd)
+            fi
+            ;;
+    esac
+fi
+
 if [ -z "$PREFIX" ]; then
     PREFIX="${WINEPREFIX:-$STATE_HOME/compatdata/$APP_ID/pfx}"
 fi
@@ -405,6 +432,7 @@ if [ "$DRY_RUN" = 1 ]; then
     printf 'arch=%s\n' "$ARCH"
     printf 'game_exe=%s\n' "$GAME_EXE"
     printf 'game_dir=%s\n' "$GAME_DIR"
+    printf 'install_dir=%s\n' "$GAME_ROOT"
     printf 'prefix=%s\n' "$PREFIX"
     printf 'wine=%s\n' "$WINE_BIN"
     printf 'runtime_package=%s@%s\n' "$RUNTIME_PACKAGE_ID" "$RUNTIME_PACKAGE_VERSION"
@@ -499,6 +527,7 @@ fi
 {
     printf '\n[ullage-bridge] appid=%s arch=%s args=%s\n' "$APP_ID" "$ARCH" "$#"
     printf '[ullage-bridge] exe=%s\n' "$GAME_EXE"
+    printf '[ullage-bridge] install_dir=%s\n' "$GAME_ROOT"
     printf '[ullage-bridge] prefix=%s\n' "$PREFIX"
     printf '[ullage-bridge] wine=%s\n' "$WINE_BIN"
     printf '[ullage-bridge] runtime_package=%s@%s\n' \
@@ -532,7 +561,7 @@ REAPED_HELPER_COUNT=0
 REAPED_GAME_COUNT=0
 PREFIX_CLEAN=0
 STOP_MARKER="$SESSION_DIR/native-stop.$$.marker"
-WINE_GAME_ROOT=$(printf 'Z:%s' "$GAME_DIR" | /usr/bin/sed 's|/|\\|g')
+WINE_GAME_ROOT=$(printf 'Z:%s' "$GAME_ROOT" | /usr/bin/sed 's|/|\\|g')
 STEAM_EXIT_MARKER="$SESSION_DIR/steam-exit.$$.marker"
 
 steam_client_pid() {

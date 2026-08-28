@@ -181,6 +181,7 @@ def exercise(
         assert "RUNTIME_PACKAGE_ID='test-package'" in config_text
         assert "RUNTIME_PACKAGE_VERSION='test-1'" in config_text
         assert "RUNTIME_MANIFEST_SHA256='" + "a" * 64 + "'" in config_text
+        assert f"INSTALL_DIR='{case['install']}'" in config_text
         state = json.loads(state_file.read_text(encoding="utf-8"))
         assert [entry["entry"] for entry in state["entries"]] == expected_launchers
         assert [entry["entry"] for entry in state.get("disabled", [])] == list(
