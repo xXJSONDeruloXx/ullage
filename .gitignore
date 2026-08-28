@@ -5,6 +5,9 @@ launchers/
 logs/
 runtime/lsteamclient/
 bin/ullage-fd-exec
+bin/ullage-native-steamclient-probe
+bin/ullage-native-steamclient-session-probe
+bin/ullage-native-steam-session.dylib
 bin/__pycache__/
 tests/__pycache__/
 .DS_Store
