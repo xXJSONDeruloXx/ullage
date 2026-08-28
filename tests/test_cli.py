@@ -303,6 +303,10 @@ def test_prefix_template_relocation():
         relocated = destination / "drive_c/windows/system32/kernel32.dll"
         assert relocated.is_symlink()
         assert relocated.resolve() == kernel.resolve()
+        assert (destination / "dosdevices/c:").is_symlink()
+        assert (destination / "dosdevices/c:").resolve() == (destination / "drive_c").resolve()
+        assert (destination / "dosdevices/z:").is_symlink()
+        assert (destination / "dosdevices/z:").resolve() == Path("/")
         assert not ULLAGE._has_broken_symlink(destination)
 
 

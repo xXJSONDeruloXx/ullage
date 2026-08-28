@@ -1722,6 +1722,20 @@ def _has_broken_symlink(root: Path) -> bool:
     return any(link.is_symlink() and not link.exists() for link in root.rglob("*"))
 
 
+def _ensure_wine_drive_links(prefix: Path) -> None:
+    """Create the standard C: and Z: mappings absent from some host templates."""
+
+    dosdevices = prefix / "dosdevices"
+    dosdevices.mkdir(parents=True, exist_ok=True)
+    for drive, target in (("c:", "../drive_c"), ("z:", "/")):
+        link = dosdevices / drive
+        if link.exists() or link.is_symlink():
+            if not link.is_symlink():
+                raise CLIError(f"Wine drive mapping is not a symlink: {link}")
+            continue
+        link.symlink_to(target)
+
+
 def provision_prefix_template(template: str | Path, destination: str | Path) -> dict:
     """Copy a verified clean host template into an AppID-owned prefix."""
 
@@ -1743,6 +1757,7 @@ def provision_prefix_template(template: str | Path, destination: str | Path) -> 
     try:
         shutil.copytree(source, temporary, symlinks=True)
         _relocate_runtime_symlinks(source, temporary)
+        _ensure_wine_drive_links(temporary)
         if not (temporary / "system.reg").is_file():
             raise CLIError(f"copied prefix template is not initialized: {temporary}")
         if _has_broken_symlink(temporary):
