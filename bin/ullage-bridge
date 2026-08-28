@@ -40,6 +40,8 @@ Runtime options:
   --sandboxfs-lib PATH        optional GameHub SandboxFS dylib to inject
   --steamclient64-forwarder PATH|stock
                               canonical-name x64 forwarder, or stock Valve DLL
+  --native-session auto|on|off
+                              optional native macOS Steam session bootstrap
   --fd-exec PATH              fd-cleaning exec helper
   --reaper PATH               prefix-scoped Wine helper reaper
   --log PATH                  append Wine output here
@@ -69,7 +71,7 @@ WINE_ARCH_VALUE="${WINE_ARCH_VALUE:-${WINEARCH:-}}"
 GPTK_ROOT="${GPTK_ROOT:-}"
 BRIDGE_ROOT="${BRIDGE_ROOT:-$REPO_ROOT/runtime/lsteamclient}"
 NATIVE_SESSION_HELPER="${ULLAGE_NATIVE_SESSION_HELPER:-$SCRIPT_DIR/ullage-native-steam-session.dylib}"
-NATIVE_SESSION_MODE="${ULLAGE_NATIVE_SESSION:-auto}"
+NATIVE_SESSION_MODE="${ULLAGE_NATIVE_SESSION:-off}"
 RUNTIME_PACKAGE_ID="${RUNTIME_PACKAGE_ID:-${ULLAGE_RUNTIME_PACKAGE_ID:-}}"
 RUNTIME_PACKAGE_VERSION="${RUNTIME_PACKAGE_VERSION:-${ULLAGE_RUNTIME_PACKAGE_VERSION:-}}"
 RUNTIME_MANIFEST="${RUNTIME_MANIFEST:-${ULLAGE_RUNTIME_MANIFEST:-}}"
@@ -188,6 +190,11 @@ while [ "$#" -gt 0 ]; do
         --steamclient64-forwarder)
             [ "$#" -ge 2 ] || die "--steamclient64-forwarder requires a path"
             STEAMCLIENT64_FORWARDER=$2
+            shift 2
+            ;;
+        --native-session)
+            [ "$#" -ge 2 ] || die "--native-session requires a value"
+            NATIVE_SESSION_MODE=$2
             shift 2
             ;;
         --fd-exec)
@@ -312,6 +319,7 @@ case "$WINE_ARCH_VALUE" in
     *) die "invalid --wine-arch value: $WINE_ARCH_VALUE" ;;
 esac
 case "$NATIVE_SESSION_MODE" in
+    on) NATIVE_SESSION_MODE=1 ;;
     auto|1|0|off) ;;
     *) die "invalid ULLAGE_NATIVE_SESSION value: $NATIVE_SESSION_MODE" ;;
 esac

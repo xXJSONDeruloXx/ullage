@@ -40,6 +40,8 @@ typedef void *(*client_get_user_method_fn)(void *, int, int, const char *);
 typedef int (*user_logged_on_method_fn)(void *);
 typedef void *(*engine_get_user_method_fn)(void *, int, int, const char *);
 typedef int (*user_account_logged_in_method_fn)(void *, const char *);
+typedef void *(*engine_get_app_manager_method_fn)(void *, int, int);
+typedef int (*app_manager_install_state_method_fn)(void *, uint32_t);
 
 static void print_vtable_summary(const char *name, void *object)
 {
@@ -208,6 +210,39 @@ static int run_probe(const char *path)
                 int account_known = account_logged_in(
                     engine_user, getenv("ULLAGE_STEAM_ACCOUNT")) ? 1 : 0;
                 printf("engine_user account_logged_in=%d\n", account_known);
+            }
+        }
+
+        /* Read-only capability check for the native app-manager boundary.
+         * Do not call LaunchApp here: the installed AppID is mapped to an
+         * external Ullage launcher, so dispatching it would recurse into a
+         * live Steam Play request. */
+        const char *probe_appid = getenv("ULLAGE_PROBE_APPID");
+        if (probe_appid && *probe_appid)
+        {
+            char *end = NULL;
+            unsigned long parsed = strtoul(probe_appid, &end, 10);
+            if (end != probe_appid && *end == '\0' && parsed <= UINT32_MAX)
+            {
+                engine_get_app_manager_method_fn get_app_manager =
+                    (engine_get_app_manager_method_fn)engine_vtable[43];
+                void *app_manager = get_app_manager(
+                    engine, user, pipe);
+                printf("app_manager pointer=%s appid=%lu\n",
+                       app_manager ? "present" : "null", parsed);
+                if (app_manager)
+                {
+                    void **app_manager_vtable = *(void ***)app_manager;
+                    app_manager_install_state_method_fn install_state =
+                        (app_manager_install_state_method_fn)
+                            app_manager_vtable[4];
+                    printf("app_install_state=%d\n",
+                           install_state(app_manager, (uint32_t)parsed));
+                }
+            }
+            else
+            {
+                printf("app_manager_probe=invalid_appid\n");
             }
         }
     }

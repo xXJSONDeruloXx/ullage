@@ -137,8 +137,10 @@ make_case() {
 }
 
 make_case early-exit slow-exit
+touch "$TEMP_ROOT/native-session.dylib"
 set +e
-FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG"
+ULLAGE_NATIVE_SESSION_HELPER="$TEMP_ROOT/native-session.dylib" \
+    FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG"
 status=$?
 set -e
 [ "$status" -eq 7 ] || {
@@ -146,6 +148,8 @@ set -e
     exit 1
 }
 grep -F 'wine_exit=7 signal_received=0' "$CASE_LOG" >/dev/null
+grep -F 'native_session_helper='"$TEMP_ROOT"'/native-session.dylib active=0 mode=off' \
+    "$CASE_LOG" >/dev/null
 [ -f "$CASE_RECEIPT" ]
 grep -F '"api_version": 1' "$CASE_RECEIPT" >/dev/null
 grep -F '"prefix_clean": true' "$CASE_RECEIPT" >/dev/null
@@ -211,6 +215,21 @@ set -e
 }
 grep -F "dllpath=$CASE_PREFIX/override" "$CASE_PREFIX/wine-events" >/dev/null
 grep -F 'dlloverrides=ddraw=n,b;lsteamclient=b' "$CASE_PREFIX/wine-events" >/dev/null
+
+make_case native-session-mode slow-exit
+touch "$TEMP_ROOT/native-session-opt-in.dylib"
+set +e
+ULLAGE_NATIVE_SESSION_HELPER="$TEMP_ROOT/native-session-opt-in.dylib" \
+    FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" \
+    --config "$CASE_CONFIG" --native-session on
+status=$?
+set -e
+[ "$status" -eq 7 ] || {
+    printf 'expected native-session opt-in exit 7, got %s\n' "$status" >&2
+    exit 1
+}
+grep -F 'native_session_helper='"$TEMP_ROOT"'/native-session-opt-in.dylib active=1 mode=1' \
+    "$CASE_LOG" >/dev/null
 
 make_case signal term-hang
 set +e

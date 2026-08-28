@@ -7,7 +7,7 @@
  * helper reproduces only that OS-level handoff so the launch boundary can be
  * tested without changing a game executable or loading third-party DRM code.
  * It does not implement Steam authentication, licensing, or the client DRM
- * backend, and is not enabled by the normal Ullage launch path yet.
+ * backend, and is not enabled by the normal Ullage launch path.
  */
 
 #define WIN32_LEAN_AND_MEAN
