@@ -725,13 +725,21 @@ wait_and_reap() {
         # wineserver -w is not reliable for every such launcher, so keep the
         # bridge alive while a process from this depot is still present. This
         # also keeps the Steam Terminating watcher alive long enough to stop
-        # the orphaned child through the scoped reaper.
+        # the orphaned child through the scoped reaper. Do not pass the Wine
+        # path through `awk -v`: awk interprets backslash escapes, so a path
+        # such as `Z:\\Users\\...` would be silently normalized and missed.
         while :; do
             [ "$SIGNAL_RECEIVED" = 0 ] || break
             game_pids=$(
                 /bin/ps -axo pid=,command= -ww 2>/dev/null |
-                    /usr/bin/awk -v root="$WINE_GAME_ROOT" \
-                        'index($0, root) {print $1}'
+                    while IFS=' ' read -r process_id process_command; do
+                        [ -n "$process_id" ] || continue
+                        if printf '%s\n' "$process_command" |
+                            /usr/bin/grep -F "$WINE_GAME_ROOT" >/dev/null 2>&1
+                        then
+                            printf '%s\n' "$process_id"
+                        fi
+                    done
             )
             [ -z "$game_pids" ] || sleep 0.1
             [ -n "$game_pids" ] || break

@@ -53,6 +53,7 @@ write_script "$TEMP_ROOT/wine" \
     '  term-ignore) trap "" TERM; while :; do /bin/sleep 1; done ;;' \
     '  term-orphan) (trap "" TERM; while :; do /bin/sleep 1; done) & printf "%s\n" "$!" >"$WINEPREFIX/orphan.pid"; trap '\''printf "%s\n" term >>"$WINEPREFIX/wine-events"; exit 143'\'' TERM; while :; do /bin/sleep 1; done ;;' \
     '  orphan-exit) /bin/sh -c '\''trap "" TERM; exec -a "$0" /bin/sleep 100'\'' "$1" & printf "%s\n" "$!" >"$WINEPREFIX/orphan.pid"; exit 0 ;;' \
+    '  orphan-win-command) win_exe=$(printf "%s" "$1" | /usr/bin/sed '\''s|^|Z:|; s|/|\\\\|g'\''); /bin/sh -c '\''trap "" TERM; exec -a "$0" /bin/sleep 100'\'' "$win_exe" & printf "%s\n" "$!" >"$WINEPREFIX/orphan.pid"; exit 0 ;;' \
     '  *) exit 0 ;;' \
     'esac'
 write_script "$TEMP_ROOT/wineserver" \
@@ -472,6 +473,41 @@ grep -F 'orphan-reaped' "$CASE_PREFIX/reaper-events" >/dev/null
 grep -F 'reaped:1' "$CASE_PREFIX/reaper-events" >/dev/null
 grep -F 'native Steam requested stop for appid=42' "$CASE_LOG" >/dev/null
 grep -F 'wine_exit=0 signal_received=1' "$CASE_LOG" >/dev/null
+
+make_case steam-stop-after-win-command orphan-win-command
+set +e
+FILE_CMD="$TEMP_ROOT/file" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG" &
+bridge_pid=$!
+ticks=0
+while [ ! -f "$CASE_PREFIX/orphan.pid" ] && [ "$ticks" -lt 40 ]; do
+    sleep 0.05
+    ticks=$((ticks + 1))
+done
+[ -f "$CASE_PREFIX/orphan.pid" ] || {
+    echo 'fake Wine did not create Windows-command orphan before keep-alive test' >&2
+    kill -TERM "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+}
+sleep 0.2
+bridge_state=$(ps -p "$bridge_pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+case "$bridge_state" in ''|Z*)
+    echo 'bridge missed a reparented child with a Windows install-root command line' >&2
+    cat "$CASE_LOG" >&2 || true
+    kill -KILL "$(cat "$CASE_PREFIX/orphan.pid")" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
+    exit 1
+    ;;
+esac
+kill -TERM "$bridge_pid"
+wait "$bridge_pid"
+status=$?
+set -e
+[ "$status" -eq 0 ] || {
+    echo "expected Windows-command stop exit 0, got $status" >&2
+    exit 1
+}
+grep -F 'wine_exit=143 signal_received=1' "$CASE_LOG" >/dev/null
 
 make_case steam-exit term-hang
 fake_steam_argv0="$CASE_STEAM_ROOT/Steam.AppBundle/Steam/Contents/MacOS/steam_osx"
