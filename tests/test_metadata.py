@@ -111,4 +111,18 @@ with tempfile.TemporaryDirectory(prefix="ullage-metadata.") as directory:
     finally:
         ULLAGE.steam_running = original_steam_running
 
+    ULLAGE.steam_running = lambda: False
+    try:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            assert ULLAGE.command_metadata(args(steam, state_root, "reconcile")) == 0
+        payload = json.loads(output.getvalue())
+        assert payload["changed"] is True
+        assert payload["restart_required"] is True
+        assert payload["mapping"]["status"] == "healthy"
+        assert Path(payload["mapping"]["appinfo"]).read_bytes() != original
+        assert list((state_root / "backups" / "appinfo").glob("42-repair-*.vdf"))
+    finally:
+        ULLAGE.steam_running = original_steam_running
+
 print("metadata reconciliation: ok")
