@@ -141,6 +141,24 @@ can select it without reading GameHub's registry. The host runtime includes a
 clean skeleton prefix at `wine/prefix`; Ullage still records per-game mappings
 and must not publish or reuse private account-bearing prefixes.
 
+### User-owned Steam client support
+
+The Windows Steam client DLLs are proprietary Valve files and are not bundled
+in the Ullage bridge or host-runtime releases. A user may provide a local
+Steam client root during mapping installation:
+
+```sh
+bin/ullagectl install APPID \
+  --steam-client-root "/path/to/Steam/drive_c/Program Files (x86)/Steam" \
+  --steamclient64-forwarder stock
+```
+
+Ullage records a manifest beside the mapping and stages only the
+architecture-appropriate Steamworks core files into the AppID prefix. This
+keeps the launch path independent of GameHub while preserving a clear license
+and provenance boundary. A GitHub release may carry the importer and its
+manifest schema, but must not carry the Valve payload.
+
 ## Renderer component overlays
 
 Keep renderer components outside the repository and select them with a

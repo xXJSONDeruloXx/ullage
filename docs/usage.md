@@ -141,6 +141,9 @@ Use these options only when needed:
 
 * `--arch win32` or `--arch win64` overrides PE detection.
 * `--wine-dllpath` supplies an alternate colon-separated Wine/D3D library path.
+* `--steam-client-root` imports the user-owned Windows Steam client support
+  files required by the selected architecture and records their hashes. This
+  is not a download switch: Valve's payload is not redistributed by Ullage.
 * `--wine-dll-overrides` persists a per-AppID `WINEDLLOVERRIDES` value. Use it
   when a title-local native DLL, such as a DirectDraw compatibility wrapper,
   must replace a Wine builtin; the DLL itself remains outside Ullage.

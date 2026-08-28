@@ -70,6 +70,7 @@ def make_case(root, launches):
     wine = root / "wine"
     gptk = root / "gptk"
     bridge = root / "bridge"
+    steam_client = root / "steam-client"
     for path in (
         steam / "appcache",
         steam / "Steam.AppBundle" / "Steam" / "Contents" / "MacOS",
@@ -80,6 +81,7 @@ def make_case(root, launches):
         gptk / "external",
         bridge / "x86_64-unix",
         bridge / "x86_64-windows",
+        steam_client,
     ):
         path.mkdir(parents=True, exist_ok=True)
 
@@ -102,6 +104,8 @@ def make_case(root, launches):
         prefix / "drive_c" / "Program Files (x86)" / "Steam" / "steamclient64.dll",
     )
     (prefix / "system.reg").touch()
+    for name in ("steamclient64.dll", "tier0_s64.dll", "vstdlib_s64.dll"):
+        (steam_client / name).write_bytes(name.encode("ascii"))
     return {
         "steam": steam,
         "install": install,
@@ -110,10 +114,11 @@ def make_case(root, launches):
         "wine": wine,
         "gptk": gptk,
         "bridge": bridge,
+        "steam_client": steam_client,
     }
 
 
-def install(case, wine_dll_overrides=None):
+def install(case, wine_dll_overrides=None, steam_client_root=False):
     install = case["install"]
     command = [
         str(ROOT / "bin" / "ullage-install"),
@@ -138,6 +143,13 @@ def install(case, wine_dll_overrides=None):
     ]
     if wine_dll_overrides is not None:
         command.extend(["--wine-dll-overrides", wine_dll_overrides])
+    if steam_client_root:
+        command.extend([
+            "--steam-client-root",
+            str(case["steam_client"]),
+            "--steamclient64-forwarder",
+            "stock",
+        ])
     run(
         command,
         env={
@@ -269,7 +281,11 @@ def main():
     }
     with tempfile.TemporaryDirectory(prefix="ullage-install-single.") as directory:
         case = make_case(Path(directory), single)
-        install(case, wine_dll_overrides="- amd_ags_x64=d;lsteamclient=b")
+        install(
+            case,
+            wine_dll_overrides="- amd_ags_x64=d;lsteamclient=b",
+            steam_client_root=True,
+        )
         launcher = case["state"] / "launchers" / "42.sh"
         assert f"--game-dir '{case['install'] / 'bin'}'" in launcher.read_text(
             encoding="utf-8"
@@ -278,6 +294,9 @@ def main():
             encoding="utf-8"
         )
         assert "WINEDLLOVERRIDES_VALUE='- amd_ags_x64=d;lsteamclient=b'" in config
+        assert f"STEAM_CLIENT_ROOT='{case['steam_client']}'" in config
+        assert "STEAM_CLIENT_MANIFEST='" in config
+        assert (case["prefix"] / "drive_c/Program Files (x86)/Steam/tier0_s64.dll").read_bytes() == b"tier0_s64.dll"
         remove(case)
 
     print("installer transaction: ok")

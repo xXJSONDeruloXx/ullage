@@ -1789,6 +1789,10 @@ def apply_runtime_defaults(args: argparse.Namespace) -> dict:
     for name, value in values.items():
         if not getattr(args, name, None) and value:
             setattr(args, name, value)
+    # A user-owned Steam client root supplies the stock x64 client itself;
+    # do not replace it with Ullage's optional canonical-name forwarder.
+    if getattr(args, "steam_client_root", None) and not getattr(args, "steamclient64_forwarder", None):
+        args.steamclient64_forwarder = "stock"
     return profile
 
 
@@ -1819,7 +1823,7 @@ def resolve_install(args: argparse.Namespace) -> tuple[dict, dict]:
         args.prefix = profile.get("prefix") or str(state_root / "compatdata" / str(appid) / "pfx")
         if profile.get("prefix_template"):
             provision_prefix_template(profile["prefix_template"], args.prefix)
-    if profile.get("provider") == "gamehub-release":
+    if profile.get("provider") == "gamehub-release" and not getattr(args, "steam_client_root", None) and not getattr(args, "steamclient64_forwarder", None):
         RUNTIME.stage_forwarder(state_root, args.prefix)
     return record, profile
 
@@ -1846,6 +1850,7 @@ def install_arguments(args: argparse.Namespace) -> list[str]:
         ("--sandboxfs-manifest", args.sandboxfs_manifest),
         ("--sandboxfs-lib", args.sandboxfs_lib),
         ("--steamclient64-forwarder", args.steamclient64_forwarder),
+        ("--steam-client-root", args.steam_client_root),
         ("--log", args.log),
         ("--wine-debug", args.wine_debug),
         ("--winemsync", args.winemsync),
@@ -2188,6 +2193,7 @@ def add_install_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--sandboxfs-manifest")
     parser.add_argument("--sandboxfs-lib")
     parser.add_argument("--steamclient64-forwarder")
+    parser.add_argument("--steam-client-root", help="user-owned Windows Steam client DLL root to stage")
     parser.add_argument("--log")
     parser.add_argument("--wine-debug")
     parser.add_argument("--winemsync")

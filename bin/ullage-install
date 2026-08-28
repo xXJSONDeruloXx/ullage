@@ -8,6 +8,7 @@ BRIDGE="$SCRIPT_DIR/ullage-bridge"
 APPINFO_TOOL="$SCRIPT_DIR/ullage-appinfo.py"
 PATH_TOOL="$SCRIPT_DIR/ullage-path.py"
 CLOUD_NATIVE_TOOL="$SCRIPT_DIR/ullage-cloud-native.py"
+STEAM_CLIENT_TOOL="$SCRIPT_DIR/ullage-steam-client.py"
 HOME_VALUE=${HOME:-/tmp}
 STATE_HOME=${ULLAGE_STATE_DIR:-$HOME_VALUE/.ullage}
 RUNTIME_ID=${ULLAGE_RUNTIME_ID:-}
@@ -45,6 +46,7 @@ Options:
   --wine-arch win32|win64     optional WINEARCH value for the selected prefix
   --gptk-root PATH            Game Porting Toolkit runtime root
   --bridge-root PATH          lsteamclient artifact root
+  --steam-client-root PATH    user-owned Windows Steam client DLL root to stage
   --sandboxfs-manifest PATH   optional GameHub SandboxFS layer manifest
   --sandboxfs-lib PATH        optional GameHub SandboxFS dylib to inject
   --steamclient64-forwarder PATH
@@ -86,6 +88,7 @@ WINEPREFIX_BASE_VALUE="${WINEPREFIX_BASE_VALUE:-${WINEPREFIX_BASE:-}}"
 WINE_ARCH_VALUE="${WINE_ARCH_VALUE:-${WINEARCH:-}}"
 GPTK_ROOT="${GPTK_ROOT:-}"
 BRIDGE_ROOT="${BRIDGE_ROOT:-$REPO_ROOT/runtime/lsteamclient}"
+STEAM_CLIENT_ROOT="${STEAM_CLIENT_ROOT:-}"
 SANDBOXFS_LAYER_MANIFEST_VALUE="${SANDBOXFS_LAYER_MANIFEST_VALUE:-${SANDBOXFS_LAYER_MANIFEST:-}}"
 SANDBOXFS_LIB_PATH_VALUE="${SANDBOXFS_LIB_PATH_VALUE:-${SANDBOXFS_LIB_PATH:-}}"
 STEAMCLIENT64_FORWARDER="${STEAMCLIENT64_FORWARDER:-}"
@@ -121,6 +124,7 @@ while [ "$#" -gt 0 ]; do
         --wine-arch) [ "$#" -ge 2 ] || die "--wine-arch requires a value"; WINE_ARCH_VALUE=$2; shift 2 ;;
         --gptk-root) [ "$#" -ge 2 ] || die "--gptk-root requires a path"; GPTK_ROOT=$2; shift 2 ;;
         --bridge-root) [ "$#" -ge 2 ] || die "--bridge-root requires a path"; BRIDGE_ROOT=$2; shift 2 ;;
+        --steam-client-root) [ "$#" -ge 2 ] || die "--steam-client-root requires a path"; STEAM_CLIENT_ROOT=$2; shift 2 ;;
         --sandboxfs-manifest) [ "$#" -ge 2 ] || die "--sandboxfs-manifest requires a path"; SANDBOXFS_LAYER_MANIFEST_VALUE=$2; shift 2 ;;
         --sandboxfs-lib) [ "$#" -ge 2 ] || die "--sandboxfs-lib requires a path"; SANDBOXFS_LIB_PATH_VALUE=$2; shift 2 ;;
         --steamclient64-forwarder) [ "$#" -ge 2 ] || die "--steamclient64-forwarder requires a path"; STEAMCLIENT64_FORWARDER=$2; shift 2 ;;
@@ -151,6 +155,7 @@ case "$APP_ID" in *[!0-9]*|'') die "AppID must be numeric: $APP_ID" ;; esac
 [ -x "$BRIDGE" ] || die "bridge is missing or not executable: $BRIDGE"
 [ -x "$SCRIPT_DIR/ullage-fd-exec" ] || die "fd helper is missing or not executable: $SCRIPT_DIR/ullage-fd-exec"
 [ -x "$APPINFO_TOOL" ] || die "appinfo editor is missing or not executable: $APPINFO_TOOL"
+[ -r "$STEAM_CLIENT_TOOL" ] || die "Steam client helper is missing: $STEAM_CLIENT_TOOL"
 [ "$CLOUD_NATIVE" -ne 1 ] || [ -r "$CLOUD_NATIVE_TOOL" ] || die "native Cloud helper is missing: $CLOUD_NATIVE_TOOL"
 [ -r "$PATH_TOOL" ] || die "path helper is missing: $PATH_TOOL"
 PYTHON3_VALUE=${PYTHON3:-python3}
@@ -249,6 +254,26 @@ if [ -z "$PREFIX" ]; then
 fi
 [ -d "$PREFIX" ] || die "Wine prefix does not exist: $PREFIX"
 [ -f "$PREFIX/system.reg" ] || die "Wine prefix is not initialized: $PREFIX"
+if [ -n "$STEAM_CLIENT_ROOT" ]; then
+    [ -d "$STEAM_CLIENT_ROOT" ] || die "Steam client root does not exist: $STEAM_CLIENT_ROOT"
+fi
+
+CONFIG_DIR="$STATE_HOME/config/games"
+STEAM_CLIENT_MANIFEST="$CONFIG_DIR/$APP_ID.steam-client.json"
+STEAM_CLIENT_MANIFEST_TMP="$CONFIG_DIR/.${APP_ID}.steam-client.$$"
+if [ -n "$STEAM_CLIENT_ROOT" ]; then
+    if [ -e "$STEAM_CLIENT_MANIFEST" ] && [ "$FORCE" -ne 1 ]; then
+        die "generated Steam client manifest exists (use --force): $STEAM_CLIENT_MANIFEST"
+    fi
+    umask 077
+    mkdir -p "$CONFIG_DIR"
+    "$PYTHON3_BIN" "$STEAM_CLIENT_TOOL" stage \
+        --source-root "$STEAM_CLIENT_ROOT" \
+        --prefix "$PREFIX" \
+        --arch "$ARCH" \
+        --manifest "$STEAM_CLIENT_MANIFEST_TMP" \
+        --json >/dev/null || die "user-owned Steam client staging failed"
+fi
 if [ "$LEGACY_STEAM" = 1 ]; then
     LEGACY_STEAM_DIR="$PREFIX/drive_c/Program Files (x86)/Steam"
     for legacy_file in steam.dll steamclient.dll tier0_s.dll vstdlib_s.dll; do
@@ -350,6 +375,7 @@ rollback() {
     remove_file "$LAUNCHER_TMP"
     remove_file "$STATE_TMP"
     remove_file "$CLOUD_STATE_TMP"
+    remove_file "$STEAM_CLIENT_MANIFEST_TMP"
     remove_file "$APPINFO_TMP"
     restore_launchers() {
         plan=$1
@@ -490,6 +516,8 @@ fi
     printf 'WINE_ARCH_VALUE=%s\n' "$(shell_quote "$WINE_ARCH_VALUE")"
     printf 'GPTK_ROOT=%s\n' "$(shell_quote "$GPTK_ROOT")"
     printf 'BRIDGE_ROOT=%s\n' "$(shell_quote "$BRIDGE_ROOT")"
+    printf 'STEAM_CLIENT_ROOT=%s\n' "$(shell_quote "$STEAM_CLIENT_ROOT")"
+    printf 'STEAM_CLIENT_MANIFEST=%s\n' "$(shell_quote "$STEAM_CLIENT_MANIFEST")"
     printf 'SANDBOXFS_LAYER_MANIFEST_VALUE=%s\n' "$(shell_quote "$SANDBOXFS_LAYER_MANIFEST_VALUE")"
     printf 'SANDBOXFS_LIB_PATH_VALUE=%s\n' "$(shell_quote "$SANDBOXFS_LIB_PATH_VALUE")"
     printf 'STEAMCLIENT64_FORWARDER=%s\n' "$(shell_quote "$STEAMCLIENT64_FORWARDER")"
@@ -593,6 +621,11 @@ STATE_INSTALLED=1
 if [ "$CLOUD_NATIVE" -eq 1 ]; then
     mv "$CLOUD_STATE_TMP" "$CLOUD_STATE_FILE"
     CLOUD_STATE_INSTALLED=1
+fi
+if [ -n "$STEAM_CLIENT_MANIFEST" ]; then
+    if [ -n "$STEAM_CLIENT_ROOT" ]; then
+        mv "$STEAM_CLIENT_MANIFEST_TMP" "$STEAM_CLIENT_MANIFEST"
+    fi
 fi
 remove_file "$SPECS_TMP"
 remove_file "$LAUNCHER_PLAN"

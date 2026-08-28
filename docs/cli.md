@@ -188,6 +188,23 @@ installs both under `~/.ullage/host-runtimes`. `runtime host-verify` validates
 the active host manifest, required Wine/GPTK paths, and extracted symlink
 layout. This path does not require GameHub.app to be installed.
 
+The Windows Steam client DLLs are a separate, user-owned input because Valve's
+payload is not an Ullage-redistributable artifact. Supply the root containing
+the Windows Steam client files when installing a mapping:
+
+~~~sh
+bin/ullagectl install APPID \
+  --steam-client-root "/path/to/Steam/drive_c/Program Files (x86)/Steam" \
+  --steamclient64-forwarder stock
+~~~
+
+For `win64`, Ullage hashes and stages `steamclient64.dll`, `tier0_s64.dll`,
+and `vstdlib_s64.dll`; for `win32`, it stages the corresponding legacy set.
+The source path, architecture, sizes, and SHA-256 values are recorded in
+`~/.ullage/config/games/APPID.steam-client.json`. Existing mismatched prefix
+files are preserved as timestamped `.ullage-original-*` backups. The staged
+files are then independent of GameHub's cache or application at launch.
+
 `runtime rollback` atomically switches `current.json` to the previous verified
 package, or to the package named by `--runtime-id` and `--version`. Packages
 are never deleted, and the previous pointers are retained in
