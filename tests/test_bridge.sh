@@ -538,6 +538,22 @@ set -e
 }
 grep -F 'wine_exit=7 signal_received=0' "$CASE_LOG" >/dev/null
 
+make_case x64-stock slow-exit win64
+stock_dll="$CASE_PREFIX/stock-steamclient64.dll"
+printf '%s\n' stock >"$stock_dll"
+ln -s "$stock_dll" \
+    "$CASE_PREFIX/drive_c/Program Files (x86)/Steam/steamclient64.dll"
+printf '%s\n' "STEAMCLIENT64_FORWARDER='stock'" >>"$CASE_CONFIG"
+set +e
+FILE_CMD="$TEMP_ROOT/file64" "$ROOT/bin/ullage-bridge" --config "$CASE_CONFIG"
+stock_status=$?
+set -e
+[ "$stock_status" -eq 7 ] || {
+    printf 'expected x64 stock-client case exit 7, got %s\n' "$stock_status" >&2
+    exit 1
+}
+grep -F '[ullage-bridge] steamclient64_mode=stock' "$CASE_LOG" >/dev/null
+
 echo 'steamclient64 forwarder validation: ok'
 
 echo 'native Steam exit supervision: ok'

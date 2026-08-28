@@ -38,8 +38,8 @@ Runtime options:
   --bridge-root PATH          directory containing lsteamclient artifacts
   --sandboxfs-manifest PATH   optional GameHub SandboxFS layer manifest
   --sandboxfs-lib PATH        optional GameHub SandboxFS dylib to inject
-  --steamclient64-forwarder PATH
-                              optional canonical-name Steam client forwarder
+  --steamclient64-forwarder PATH|stock
+                              canonical-name x64 forwarder, or stock Valve DLL
   --fd-exec PATH              fd-cleaning exec helper
   --reaper PATH               prefix-scoped Wine helper reaper
   --log PATH                  append Wine output here
@@ -362,13 +362,28 @@ if [ -n "$SANDBOXFS_LAYER_MANIFEST_VALUE" ] || [ -n "$SANDBOXFS_LIB_PATH_VALUE" 
 fi
 
 STEAMCLIENT64_TARGET="$PREFIX/drive_c/Program Files (x86)/Steam/steamclient64.dll"
-if [ "$ARCH" = win64 ] && [ -f "$STEAMCLIENT64_FORWARDER" ]; then
+STEAMCLIENT64_FORWARDER_MODE=forwarder
+STEAMCLIENT64_FORWARDER_DISPLAY="$STEAMCLIENT64_FORWARDER"
+if [ "$STEAMCLIENT64_FORWARDER" = stock ]; then
+    STEAMCLIENT64_FORWARDER_MODE=stock
+    STEAMCLIENT64_FORWARDER_DISPLAY=stock
+    STEAMCLIENT64_FORWARDER=
+elif [ -z "$STEAMCLIENT64_FORWARDER" ]; then
+    STEAMCLIENT64_FORWARDER="$BRIDGE_ROOT/x86_64-windows/steamclient64.dll"
+    STEAMCLIENT64_FORWARDER_DISPLAY="$STEAMCLIENT64_FORWARDER"
+fi
+if [ "$ARCH" = win64 ] && [ "$STEAMCLIENT64_FORWARDER_MODE" = forwarder ] &&
+    [ -f "$STEAMCLIENT64_FORWARDER" ]; then
     [ -f "$STEAMCLIENT64_TARGET" ] ||
         die "64-bit Steam client forwarder is not staged: $STEAMCLIENT64_TARGET"
     [ ! -L "$STEAMCLIENT64_TARGET" ] ||
         die "64-bit Steam client target must not be a symlink: $STEAMCLIENT64_TARGET"
     cmp -s "$STEAMCLIENT64_FORWARDER" "$STEAMCLIENT64_TARGET" ||
         die "staged steamclient64.dll does not match: $STEAMCLIENT64_TARGET"
+fi
+if [ "$ARCH" = win64 ] && [ "$STEAMCLIENT64_FORWARDER_MODE" = stock ]; then
+    [ -f "$STEAMCLIENT64_TARGET" ] ||
+        die "stock 64-bit Steam client is missing: $STEAMCLIENT64_TARGET"
 fi
 if [ "$LEGACY_STEAM" = 1 ]; then
     LEGACY_STEAM_DIR="$PREFIX/drive_c/Program Files (x86)/Steam"
@@ -395,7 +410,8 @@ if [ "$DRY_RUN" = 1 ]; then
     printf 'steam_client=%s\n' "$STEAM_CLIENT_DYLIB"
     printf 'host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf 'win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
-    printf 'steamclient64_forwarder=%s\n' "$STEAMCLIENT64_FORWARDER"
+    printf 'steamclient64_mode=%s\n' "$STEAMCLIENT64_FORWARDER_MODE"
+    printf 'steamclient64_forwarder=%s\n' "$STEAMCLIENT64_FORWARDER_DISPLAY"
     printf 'reaper=%s\n' "$REAPER"
     printf 'wine_session_wait=%s\n' "$WINE_SESSION_WAIT"
     printf 'legacy_steam=%s\n' "$LEGACY_STEAM"
@@ -483,7 +499,8 @@ fi
     printf '[ullage-bridge] runtime_manifest_sha256=%s\n' "$RUNTIME_MANIFEST_SHA256"
     printf '[ullage-bridge] host_lsteamclient=%s\n' "$HOST_LSTEAMCLIENT"
     printf '[ullage-bridge] win_lsteamclient=%s\n' "$WIN_LSTEAMCLIENT"
-    printf '[ullage-bridge] steamclient64_forwarder=%s\n' "$STEAMCLIENT64_FORWARDER"
+    printf '[ullage-bridge] steamclient64_mode=%s\n' "$STEAMCLIENT64_FORWARDER_MODE"
+    printf '[ullage-bridge] steamclient64_forwarder=%s\n' "$STEAMCLIENT64_FORWARDER_DISPLAY"
     printf '[ullage-bridge] preserve_steam_transport=%s\n' "$PRESERVE_STEAM_TRANSPORT"
     printf '[ullage-bridge] steam_stop_watch=%s\n' "$STEAM_STOP_WATCH"
     printf '[ullage-bridge] wine_dll_overrides=%s\n' "$WINEDLLOVERRIDES_VALUE"
