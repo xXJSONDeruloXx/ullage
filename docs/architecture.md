@@ -89,7 +89,11 @@ is bounded to the selected prefix and never uses a global process-name kill.
 Steam may rewrite `appcache/appinfo.vdf` during metadata refreshes or client
 updates. Ullage treats the mapping as local and repeatable: install records a
 private backup, status detects stale or foreign state, repair uses an optimistic
-concurrency check, and remove restores the recorded native entry.
+concurrency check, and remove restores the recorded native entry. The
+restart-aware metadata reconciler makes healthy state a no-op, refuses stale
+writes under a live client, and reports when a real change still needs one
+client restart to invalidate Steam's in-memory cache. Ullage does not rely on
+an undocumented live appinfo reload.
 
 The state root is separate from the checkout:
 
@@ -111,6 +115,7 @@ Steam/appcache/appinfo.vdf  native Steam's local control-plane cache
 * `bin/ullagectl` / `bin/ullage` — versioned JSON discovery, planning, and
   mutation facade for machine callers.
 * `bin/ullage-mapping.py` — status and conservative repair.
+* `bin/ullagectl metadata` — restart-aware metadata status and reconciliation.
 * `bin/ullage-bridge` — hot launch and process supervision boundary.
 * `bin/ullage-runtime.py` — release/archive/manifest verification, package
   staging, rollback, forwarder staging, and runtime provenance.

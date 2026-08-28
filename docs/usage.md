@@ -86,12 +86,18 @@ bin/ullagectl library --json
 bin/ullagectl plan APPID --json
 bin/ullagectl smoke --json
 bin/ullagectl steam set-depot-mode windows --json
+bin/ullagectl metadata status APPID --json
+bin/ullagectl metadata reconcile APPID --json
 ~~~
 
 The separate GUI should call `ullagectl` only. It should use the returned
 runtime and launch-plan objects instead of learning GameHub paths or parsing
 the output of the lower-level scripts. See the [CLI contract](cli.md) for
 response fields, states, error codes, and mutation behavior.
+
+Repeated checks should use `metadata reconcile` or `install --if-needed`.
+Healthy mappings are returned as no-ops and do not require a Steam restart;
+only a real stale metadata repair reports that a restart is required.
 
 ## Install
 

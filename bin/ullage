@@ -28,6 +28,7 @@ WINDOWS_DEPOT_DIRECTIVE = "@sSteamCmdForcePlatformType windows"
 CAPABILITIES = [
     "multi_launch",
     "mapping_repair",
+    "metadata_reconcile",
     "native_cloud",
     "gamehub_runtime",
     "steam_depot_mode",
@@ -1877,6 +1878,23 @@ def install_arguments(args: argparse.Namespace) -> list[str]:
 
 
 def command_install(args: argparse.Namespace) -> int:
+    if getattr(args, "if_needed", False):
+        appid = resolve_appid(args)
+        try:
+            metadata = metadata_record(args, appid)
+        except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError) as exc:
+            return failure("install", str(exc), appid=appid)
+        if metadata["mapping_status"] == "healthy":
+            return output(
+                "install",
+                {
+                    "appid": appid,
+                    "message": "mapping already healthy; no metadata update required",
+                    "changed": False,
+                    "restart_required": False,
+                    "mapping": metadata["mapping"],
+                },
+            )
     if steam_running():
         return failure(
             "install",
@@ -1929,17 +1947,38 @@ def command_install(args: argparse.Namespace) -> int:
 
 def command_repair(args: argparse.Namespace) -> int:
     appid = resolve_appid(args)
-    if steam_running():
-        return failure(
-            "repair",
-            "Native Steam must be fully quit before repairing a mapping.",
-            "steam_running",
-            appid,
-        )
     state_root = expand(args.state_dir)
     steam_root = expand(args.steam_root)
     paths = MAPPING._paths(state_root, appid)
     try:
+        inspected = MAPPING.inspect_mapping(
+            steam_root / "appcache/appinfo.vdf",
+            paths["state_file"],
+            paths["config_file"],
+            paths["launcher"],
+            expected_appid=appid,
+        )
+        # Reconciliation is deliberately idempotent. A healthy mapping does
+        # not need an appinfo write, and therefore does not need Steam to be
+        # restarted merely because a caller checked it again.
+        if inspected.get("status") == "healthy":
+            return output(
+                "repair",
+                {
+                    "appid": appid,
+                    "message": "mapping already healthy; no metadata update required",
+                    "changed": False,
+                    "restart_required": False,
+                    "mapping": inspected,
+                },
+            )
+        if steam_running():
+            return failure(
+                "repair",
+                "Native Steam must be fully quit before repairing a stale mapping.",
+                "steam_running",
+                appid,
+            )
         result = MAPPING.repair_mapping(
             steam_root / "appcache/appinfo.vdf",
             paths["state_file"],
@@ -1951,7 +1990,90 @@ def command_repair(args: argparse.Namespace) -> int:
         )
     except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError) as exc:
         return failure("repair", str(exc), appid=appid)
-    return output("repair", {"appid": appid, "message": "mapping repaired", "mapping": result})
+    return output(
+        "repair",
+        {
+            "appid": appid,
+            "message": "mapping repaired",
+            "changed": True,
+            "restart_required": True,
+            "mapping": result,
+        },
+    )
+
+
+def metadata_record(args: argparse.Namespace, appid: int) -> dict:
+    """Return the guarded, restart-aware state of one AppID's metadata."""
+
+    state_root = expand(args.state_dir)
+    steam_root = expand(args.steam_root)
+    paths = MAPPING._paths(state_root, appid)
+    mapping = MAPPING.inspect_mapping(
+        steam_root / "appcache/appinfo.vdf",
+        paths["state_file"],
+        paths["config_file"],
+        paths["launcher"],
+        expected_appid=appid,
+    )
+    healthy = mapping.get("status") == "healthy"
+    return {
+        "appid": appid,
+        "mapping": mapping,
+        "mapping_status": mapping.get("status"),
+        "steam_process": steam_status(steam_root)["process"],
+        "action": "noop" if healthy else "reconcile",
+        "changed": False,
+        "restart_required": not healthy,
+        "requires_steam_stopped": not healthy,
+    }
+
+
+def command_metadata(args: argparse.Namespace) -> int:
+    appid = resolve_appid(args)
+    try:
+        record = metadata_record(args, appid)
+    except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError) as exc:
+        return failure("metadata", str(exc), appid=appid)
+    if args.metadata_command == "status":
+        return output("metadata status", record)
+    if record["mapping_status"] == "healthy":
+        record.update(
+            message="metadata already reconciled; no Steam restart required",
+            action="noop",
+        )
+        return output("metadata reconcile", record)
+    if steam_running():
+        return failure(
+            "metadata reconcile",
+            "Native Steam must be fully quit before reconciling stale metadata.",
+            "steam_running",
+            appid,
+        )
+    state_root = expand(args.state_dir)
+    steam_root = expand(args.steam_root)
+    paths = MAPPING._paths(state_root, appid)
+    try:
+        repaired = MAPPING.repair_mapping(
+            steam_root / "appcache/appinfo.vdf",
+            paths["state_file"],
+            paths["config_file"],
+            paths["launcher"],
+            state_root / "backups/appinfo",
+            force=args.force,
+            check_steam=False,
+            expected_appid=appid,
+        )
+    except (OSError, ValueError, MAPPING.MappingError, APPINFO.AppInfoError) as exc:
+        return failure("metadata reconcile", str(exc), appid=appid)
+    record.update(
+        message="stale metadata reconciled",
+        action="reconciled",
+        changed=True,
+        restart_required=True,
+        requires_steam_stopped=True,
+        mapping=repaired,
+    )
+    return output("metadata reconcile", record)
 
 
 def command_remove(args: argparse.Namespace) -> int:
@@ -2210,6 +2332,11 @@ def add_install_options(parser: argparse.ArgumentParser) -> None:
     transport.add_argument("--clean-steam-transport", dest="preserve_steam_transport", action="store_false")
     parser.set_defaults(preserve_steam_transport=True, force=False)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--if-needed",
+        action="store_true",
+        help="return success without touching Steam metadata when the mapping is healthy",
+    )
 
 
 def add_plan_options(parser: argparse.ArgumentParser) -> None:
@@ -2252,6 +2379,19 @@ def parser() -> argparse.ArgumentParser:
     add_context(repair)
     add_appid(repair)
     repair.add_argument("--force", action="store_true")
+    metadata = commands.add_parser(
+        "metadata", help="inspect or reconcile Ullage-owned Steam metadata"
+    )
+    metadata_commands = metadata.add_subparsers(dest="metadata_command", required=True)
+    metadata_status = metadata_commands.add_parser("status", help="read metadata state")
+    add_context(metadata_status)
+    add_appid(metadata_status)
+    metadata_reconcile = metadata_commands.add_parser(
+        "reconcile", help="repair stale metadata under the stopped-Steam guard"
+    )
+    add_context(metadata_reconcile)
+    add_appid(metadata_reconcile)
+    metadata_reconcile.add_argument("--force", action="store_true")
     remove = commands.add_parser("remove", help="restore a Steam launch mapping")
     add_context(remove)
     add_appid(remove)
@@ -2354,6 +2494,8 @@ def main(argv: list[str] | None = None) -> int:
             return command_install(args)
         if args.command == "repair":
             return command_repair(args)
+        if args.command == "metadata":
+            return command_metadata(args)
         if args.command == "remove":
             return command_remove(args)
         if args.command == "runtime":

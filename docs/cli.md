@@ -97,6 +97,8 @@ Mutating commands are:
 bin/ullagectl install APPID --runtime RUNTIME_ID --json
 bin/ullagectl repair APPID --json
 bin/ullagectl remove APPID --json
+bin/ullagectl metadata status APPID --json
+bin/ullagectl metadata reconcile APPID --json
 bin/ullagectl runtime fetch --json
 bin/ullagectl runtime host-fetch --json
 bin/ullagectl runtime rollback --json
@@ -111,6 +113,14 @@ non-GameHub providers and reproducible tests. Re-running it for a healthy
 Ullage mapping is the supported way to apply a different runtime profile; the
 facade permits replacement only after confirming that the existing mapping is
 healthy. Stale or foreign mappings remain guarded.
+
+Use `install --if-needed` when a caller is checking or ensuring an existing
+mapping. It returns a successful no-op for a healthy mapping, even while Steam
+is running, so routine UI refreshes do not cause metadata writes or Steam
+restarts. `metadata status` and `metadata reconcile` expose the same policy
+explicitly. Reconcile repairs only stale Ullage-owned state, refuses to write
+under a live Steam client, and reports `restart_required` after a successful
+write because Steam caches AppInfo in memory.
 
 All mutations enforce the same invariant as the lower-level tools: native
 Steam must be fully stopped while `appcache/appinfo.vdf` is changed. The GUI
